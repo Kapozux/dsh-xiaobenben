@@ -68,7 +68,7 @@ export const POSE_FALLBACK = {
   dangle: 'surprised', land: 'surprised', sit: 'normal', sleep: 'sleepy', sulk: 'pout', wave: 'happy',
 }
 export const POSES = Object.keys(POSE_FALLBACK)
-export const FIGURES = ['normal', 'blink', 'happy', 'sad', 'surprised', 'sleepy', 'shy', 'thinking', 'eat', 'pout', 'proud', ...POSES, 'flip-1', 'flip-2', 'flip-3', 'flip-4', 'flip-5', 'flip-6']
+export const FIGURES = ['normal', 'blink', 'happy', 'sad', 'surprised', 'sleepy', 'shy', 'thinking', 'eat', 'pout', 'proud', ...POSES, 'walk-1', 'walk-2', 'walk-3', 'walk-4', 'flip-1', 'flip-2', 'flip-3', 'flip-4', 'flip-5', 'flip-6']
 
 const CSS = `
 .fy-root { position: absolute; inset: 0; pointer-events: none; overflow: hidden; font-family: "XBB Rounded", -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; }
@@ -207,7 +207,7 @@ export function createPet(host, opts) {
   fig.append(img, mark); float.appendChild(fig); body.appendChild(float)
   const MARK = { happy: '♪', surprised: '！', sleepy: 'z', shy: '///', sad: '💧', thinking: '…', eat: '♪', pout: '💢', proud: '✦' }
   const srcs = {}                              // 名字 → 地址（null = 没这张图）
-  let expr = 'normal', exprTimer = 0, lastActive = Date.now()
+  let expr = 'normal', exprTimer = 0, lastActive = Date.now(), walking = null, walkRaf = 0, walkTimer = 0
   const ready = Promise.all(FIGURES.map(n => Promise.resolve(opts.figureSrc(n)).catch(() => null).then(u => { srcs[n] = u })))
   const srcOf = n => srcs[n] || srcs.normal
   // 没有备用形象：立绘取不到就不显示（隔 5 秒再取一次），绝不画别的东西顶上
@@ -215,6 +215,7 @@ export function createPet(host, opts) {
   /** 换表情：有这张表情图就换图；没有就用 normal 图 + 代码画的漫画符号和动作。ms 后回到 normal（0 = 保持到下次换） */
   function setExpr(name, ms = 0) {
     clearTimeout(exprTimer)
+    if (walking) { walking = null; cancelAnimationFrame(walkRaf); img.style.transform = ''; opts.prefs.set({ x, y }) }   // 换别的样子 = 不走了
     if (POSES.includes(name) && !srcs[name]) name = POSE_FALLBACK[name]
     expr = name in MARK || name === 'normal' || POSES.includes(name) ? name : 'normal'
     lastActive = Date.now()
@@ -256,7 +257,7 @@ export function createPet(host, opts) {
     show(expr)
   }
   let figTimer = 0
-  ready.then(() => { if (srcs.normal) { pet.style.visibility = ''; show(expr); if (srcs.wave) setExpr('wave', 1600) } else loadFigures(); blink() })
+  ready.then(() => { if (srcs.normal) { pet.style.visibility = ''; show(expr); if (srcs.wave) setExpr('wave', 1600) } else loadFigures(); blink(); scheduleWalk() })
 
   // 翻本子：点了之后先翻（2→3→4→5，记录没读完就在 4、5 之间来回翻），翻到了停在第 6 帧「看到了」
   let flipTimer = 0
@@ -314,6 +315,34 @@ export function createPet(host, opts) {
     raf = requestAnimationFrame(step)
   }
   const kick = () => { if (!raf) { last = performance.now(); raf = requestAnimationFrame(step) } }
+
+  // ---------- 散步 ----------
+  // 闲着站在地上时，每 15～50 秒在底下走一小段（60～260px，每秒 70px，4 帧每帧 160ms，往左走镜像）。
+  // 戳、拖、说话、换表情都会打断；快到该坐下 / 睡觉的时候（3 分钟没人理）就不走了。
+  function scheduleWalk() { clearTimeout(walkTimer); walkTimer = setTimeout(tryWalk, 15e3 + Math.random() * 35e3) }
+  function tryWalk() {
+    scheduleWalk()
+    if (walking || dragging || bubble || thinking || menu || raf || expr !== 'normal' || !onFloor && y < floor() - 1 || !srcs['walk-1']) return
+    if (Date.now() - lastActive > 3 * 60e3) return
+    const maxX = W() - SW
+    if (!W() || maxX < 80) return
+    let dir = Math.random() < 0.5 ? -1 : 1
+    if (x + dir * 80 < 0) dir = 1
+    if (x + dir * 80 > maxX) dir = -1
+    const target = clamp(x + dir * (60 + Math.random() * 200), 0, maxX)
+    const me = walking = { dir, t: 0 }
+    expr = 'walk'; img.style.transform = dir < 0 ? 'scaleX(-1)' : ''
+    let lastTs = performance.now()
+    const stepW = ts => {
+      if (walking !== me) return
+      const dt = clamp((ts - lastTs) / 1000, 0, 0.05); lastTs = ts
+      x += dir * 70 * dt; me.t += dt
+      show('walk-' + (1 + Math.floor(me.t / 0.16) % 4)); place()
+      if (dir > 0 ? x >= target : x <= target) { const keep = lastActive; setExpr('normal'); lastActive = keep; return }
+      walkRaf = requestAnimationFrame(stepW)
+    }
+    walkRaf = requestAnimationFrame(stepW)
+  }
 
   // ---------- 拖、甩、戳 ----------
   // 防「按下 / 松开丢了一个」：macOS 第一次点没聚焦的窗口时会吞掉其中一个事件。
@@ -632,7 +661,7 @@ export function createPet(host, opts) {
   return {
     say, poke,
     destroy() {
-      cancelAnimationFrame(raf); clearInterval(restTimer); clearTimeout(blinkTimer); clearTimeout(exprTimer); clearTimeout(flipTimer); hideBubble(); closeMenu(); win.removeEventListener('resize', onResize); doc.removeEventListener('pointerdown', onDocDown, true); root.remove()
+      cancelAnimationFrame(raf); cancelAnimationFrame(walkRaf); clearTimeout(walkTimer); walking = null; clearInterval(restTimer); clearTimeout(blinkTimer); clearTimeout(exprTimer); clearTimeout(flipTimer); hideBubble(); closeMenu(); win.removeEventListener('resize', onResize); doc.removeEventListener('pointerdown', onDocDown, true); root.remove()
     },
   }
 }

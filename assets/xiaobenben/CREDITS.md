@@ -9,6 +9,8 @@
 | `write` `count` `hide` `accuse` `spout` `bow` `.png` | 从 `poses-1-sheet.png` 切出：记账、数饭碗、本子挡脸、翻本子质问、喷水欢呼、鞠躬 | 同上（切图、对齐：本插件） |
 | `poses-2-sheet.png` | 6 个桌宠动作原画（一张横排） | 同上 |
 | `dangle` `land` `sit` `sleep` `sulk` `wave` `.png` | 从 `poses-2-sheet.png` 切出：被拎起、落地、坐着翻本子、趴本子睡着、背对生闷气、挥手 | 同上（切图、对齐：本插件） |
+| `walk-sheet.png` | 向右走路 4 帧原画 | 同上 |
+| `walk-1` … `walk-4` `.png` | 从 `walk-sheet.png` 切出，同一比例、同一脚底线，头对齐（往左走时程序镜像） | 同上（切图、对齐：本插件） |
 | `expressions-sheet.png` | 9 种表情原画（一张横排） | 同上 |
 | `happy` `sad` `surprised` `sleepy` `shy` `thinking` `eat` `pout` `proud` `.png` | 从 `expressions-sheet.png` 切出的单帧，缩放到和 `normal.png` 同样身高、按脚底对齐 | 同上（切图、对齐：本插件） |
 | `normal.png` | 平时站着的样子，就是 `flip-1.png` | 同上 |
