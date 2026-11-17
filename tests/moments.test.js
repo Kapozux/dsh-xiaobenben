@@ -186,16 +186,16 @@ test('台词缓存：过期了先给旧的、后台重算，不让点的人等',
   assert.notEqual(pet.cache.value, a)
 })
 
-test('无限轮闲聊：每个心情至少 6 个按钮、每个 3 句回话；按钮 ≤6 字、回话 ≤40 字；接到的心情都存在，动作都有表情', async () => {
+test('无限轮闲聊：每个心情 10 个按钮、每个 5 句回话；按钮 ≤6 字、回话 ≤40 字；接到的心情都存在，动作都有表情', async () => {
   const { CHAT, MOOD_ANIM, ANIM_MOOD } = await import('../src/shared/chat.js')
   const { EXPR } = await import('../src/shared/pet-engine.js')
   const { LINES } = await import('../src/shared/lines.js')
   for (const [mood, list] of Object.entries(CHAT)) {
-    assert.ok(list.length >= 6, mood)
+    assert.equal(list.length, 10, mood)
     assert.ok(MOOD_ANIM[mood] && EXPR[MOOD_ANIM[mood]], mood)
     for (const [label, replies, to] of list) {
       assert.ok([...label].length <= 6, label)
-      assert.equal(replies.length, 3, label)
+      assert.equal(replies.length, 5, label)
       for (const r of replies) assert.ok([...r].length <= 40, r)
       assert.ok(CHAT[to], `${label} → ${to}`)
     }
@@ -224,4 +224,19 @@ test('反馈：👎 的不再挑、👍 的多挑；外面读进来的只收认�
   assert.equal(n.a, 0); assert.ok(n.b > n.c * 2, JSON.stringify(n))
   assert.equal(pickRated(['a'], fb), 'a')                 // 全被 👎 了：当没投过
   assert.ok(feedbackJson(fb).length < 1000)
+})
+
+test('拖她的话：拎起 30、拎久 20、甩 20、落地 30；扣着刚才的事那些占位符只在该在的地方；打分回话每种 👍👎 各 15', async () => {
+  const { LINES } = await import('../src/shared/lines.js')
+  assert.deepEqual([LINES.drag, LINES.dragLong, LINES.fling, LINES.land].map(a => new Set(a).size), [30, 20, 20, 30])
+  for (const [k, list] of Object.entries(LINES.ctx)) {
+    assert.ok(list.length >= (/^pick_|_many|_night|_hard/.test(k) ? 8 : /^land_(down|up|rate|chat|sulk)/.test(k) ? 10 : 6), k)
+    for (const t of list) {
+      assert.ok([...t.replace(/\{\w+\}/g, 'xxx').replace(/\s/g, '')].length <= 40, t)
+      if (k === 'land_chat') assert.match(t, /\{label\}/)
+      if (k === 'land_many') assert.match(t, /\{n\}/)
+      assert.ok(!(t.match(/\{(\w+)\}/g) || []).some(p => p !== { land_down: '{kind}', land_chat: '{label}', land_many: '{n}' }[k]), t)
+    }
+  }
+  for (const g of Object.values(LINES.rateReply)) { assert.equal(g.up.length, 15); assert.equal(g.down.length, 15) }
 })
