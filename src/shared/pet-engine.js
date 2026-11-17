@@ -1,6 +1,7 @@
 import { LINES } from './lines.js'
 import { CHAT, MOOD_ANIM, ANIM_MOOD } from './chat.js'
 import { IDLE } from './idle.js'
+import { emptyFeedback, normFeedback, pickRated } from './feedback.js'
 /**
  * 大肥鱼引擎：不依赖 React，dsh 浮层（Pet.jsx）和桌面窗口（desktop/）共用一份。
  *
@@ -60,7 +61,7 @@ export function rounds(text) {
 export const EXPR = {
   idle: 'normal', work: ['write', 'thinking'], file: ['write', 'thinking'], yawn: ['sleep', 'sleepy'], startle: 'surprised', drag: 'dangle',
   caught: ['hide', 'shy'], bow: ['bow', 'shy'], sigh: 'sad', cheer: ['spout', 'wave', 'happy'], eat: ['count', 'eat'], poke: ['wave', 'happy'],
-  angry: ['sulk', 'accuse', 'pout'], proud: 'proud',
+  angry: ['sulk', 'accuse', 'pout'], proud: 'proud', land: 'land',
 }
 /** 姿势图（不是单纯换脸）；没这张图时退回哪个表情 */
 export const POSE_FALLBACK = {
@@ -135,6 +136,7 @@ const CSS = `
 .fy-react { display: flex; gap: 6px; margin-top: 9px; padding-top: 8px; border-top: 1.5px dashed rgba(42,36,29,.22); flex-wrap: wrap; animation: fy-pop .2s ease-out; }
 .fy-react button { font: inherit; font-size: 12px; line-height: 1; color: inherit; background: transparent; border: 1.5px solid #2a241d; border-radius: 99px; padding: 6px 10px; cursor: pointer; transition: transform .1s; }
 .fy-react button.emo { font-size: 14px; padding: 4px 8px; }
+.fy-rate { margin-top: 6px; } .fy-rated { font-size: 12px; opacity: .75; }
 .fy-react button:hover { background: #2a241d; color: #fffdf8; transform: translateY(-1px); }
 .fy-react button:active { transform: scale(.92); }
 .fy-menu { position: absolute; pointer-events: auto; width: 230px; box-sizing: border-box; padding: 6px; border-radius: 14px; background: #fffdf8; color: #2a241d;
@@ -282,7 +284,7 @@ export function createPet(host, opts) {
   const p0 = opts.prefs.get()
   let x = p0.x >= 0 ? p0.x : W() - SW - 24, y = p0.y >= 0 ? p0.y : H() - size   // 左上角
   let vx = 0, vy = 0, raf = 0, last = 0, onFloor = false
-  let dragging = null
+  let dragging = null, dragTalk = 0, flung = false
   const floor = () => H() - size
   function place(tilt = 0) {
     pet.style.transform = `translate(${x}px, ${y}px)` + (tilt ? ` rotate(${tilt}deg)` : '')
@@ -306,7 +308,11 @@ export function createPet(host, opts) {
     if (y >= floor() && vy >= 0) {
       y = floor()
       const hit = vy
-      if (hit > 260) { vy = -hit * BOUNCE; vx *= FRICTION; squash(1.18, 0.8); if (!bubble && (expr === 'normal' || expr === 'land')) setExpr('land', 700) }
+      if (hit > 260) {
+        vy = -hit * BOUNCE; vx *= FRICTION; squash(1.18, 0.8)
+        if (flung) { flung = false; say({ text: pickLine(LINES.land), anim: 'land', rate: '落地' }) }
+        else if (!bubble && (expr === 'normal' || expr === 'land')) setExpr('land', 700)
+      } else if (flung && onFloor) flung = false
       else { vy = 0; vx *= 0.8 }
     }
     onFloor = y >= floor() && Math.abs(vy) < 1
@@ -356,7 +362,7 @@ export function createPet(host, opts) {
   // 防「按下 / 松开丢了一个」：macOS 第一次点没聚焦的窗口时会吞掉其中一个事件。
   // 没按着键的移动一律不算拖；丢了捕获就当松手；甩出去的速度只看最后 100ms、封顶，静止松手不甩。
   function endDrag(e, cancelled) {
-    const d = dragging; dragging = null; pet.classList.remove('drag')
+    const d = dragging; dragging = null; pet.classList.remove('drag'); clearInterval(dragTalk)
     if (!d) return
     if (!d.moved) { if (!cancelled) poke(); return }
     const now = performance.now()
@@ -367,7 +373,15 @@ export function createPet(host, opts) {
       vx = clamp((bx - ax) / dt, -1800, 1800); vy = clamp((by - ay) / dt, -1800, 1800)
     } else { vx = 0; vy = 0 }
     opts.prefs.set({ x, y })
-    idle(); kick()
+    const fast = Math.hypot(vx, vy) > 700
+    flung = fast || y < floor() - 120                                  // 甩出去 / 从高处松手：落地时说一句
+    if (fast) say({ text: pickLine(LINES.fling), anim: 'drag', rate: '被甩' })
+    else if (bubble && talk?.full && talk.line?.rate && !bubble.querySelector('.fy-rate')) {   // 慢慢放下：拎着时说的那句留着，补上 👍 👎
+      addRate(bubble, talk.line.rate, talk.line.text)
+      clearTimeout(talk.timer); talk.timer = setTimeout(() => { hideBubble(); idle() }, 6000)
+    }
+    if (!fast) idle()
+    kick()
   }
   pet.addEventListener('pointerdown', e => {
     if (e.button !== 0) return
@@ -379,7 +393,11 @@ export function createPet(host, opts) {
     if (!(e.buttons & 1)) return endDrag(e, true)        // 松手事件丢了：别让它跟着鼠标跑
     const dx = e.clientX - d.sx, dy = e.clientY - d.sy
     if (!d.moved && Math.hypot(dx, dy) < 6) return
-    if (!d.moved) { d.moved = true; pet.classList.add('drag'); hideBubble(); thinking = null; flipStop(); closeMenu(); playAnim('drag') }
+    if (!d.moved) {
+      d.moved = true; pet.classList.add('drag'); thinking = null; flipStop(); closeMenu()
+      say({ text: pickLine(LINES.drag), anim: 'drag', rate: '被拎起' })                     // 被拎起来要说一句；拎久了每 4 秒再抱怨一句
+      clearInterval(dragTalk); dragTalk = setInterval(() => { if (dragging) say({ text: pickLine(LINES.dragLong), anim: 'drag', rate: '拎太久' }) }, 4000)
+    }
     d.hist.push([e.clientX, e.clientY, performance.now()]); if (d.hist.length > 8) d.hist.shift()
     const [ax, , at] = d.hist[0]
     const v = (e.clientX - ax) / Math.max(1, performance.now() - at) * 1000
@@ -398,6 +416,26 @@ export function createPet(host, opts) {
   // ---------- 说话 ----------
   let data = null, inflight = null
   const queues = {}
+  // 反馈：共用一份（opts.feedback.load / save），没有就只记在这只的偏好里
+  let fb = emptyFeedback(), fbTimer = 0
+  Promise.resolve(opts.feedback?.load?.()).then(d => {
+    fb = normFeedback(d || {})
+    const old = opts.prefs.get().fb                       // 以前按类别的票记在偏好里：并进来
+    if (old && !Object.keys(fb.kinds).length) { fb.kinds = normFeedback({ kinds: old }).kinds; saveFb() }
+    for (const k in queues) delete queues[k]
+  }).catch(err => console.warn('[小本本] 读反馈失败', err))
+  function saveFb() {
+    clearTimeout(fbTimer)
+    fbTimer = setTimeout(() => { Promise.resolve(opts.feedback?.save?.(fb)).catch(err => console.warn('[小本本] 存反馈失败', err)) }, 400)
+    opts.onFeedback?.(fb)
+  }
+  function logFb(what, text, d) { fb.log.push({ t: Date.now(), what, text, d }); if (fb.log.length > 300) fb.log.splice(0, fb.log.length - 300) }
+  /** 给一句话打分：1 = 👍（以后多说），-1 = 👎（以后不说），0 = 撤销 */
+  function rateLine(what, text, d) {
+    if (d) fb.lines[text] = d; else delete fb.lines[text]
+    logFb(what, text, d); saveFb()
+  }
+  const pickLine = list => pickRated(list, fb)
   let bubble = null, talk = null
   function load(fresh = false) {
     if (inflight && !fresh) return inflight
@@ -445,7 +483,7 @@ export function createPet(host, opts) {
     textEl.innerHTML = rs.map((r, k) => html(k, r.text)).join(''); b.style.width = Math.min(340, Math.max(line.react || line.chat ? 250 : 120, b.offsetWidth)) + 'px'
     textEl.innerHTML = ''
     positionBubble()
-    const t = talk = { i: 0, typed: '', full: false, timer: 0 }
+    const t = talk = { i: 0, typed: '', full: false, timer: 0, line }
     if (expr === 'flip') exprTimer = setTimeout(() => playAnim(line.anim || 'idle'), 900)   // 第 6 帧「看到了」先停一下
     else if (line.anim) playAnim(line.anim)
     const paintTo = (s) => { textEl.innerHTML = parts.slice(0, t.i).map((p, k) => html(k, p)).join('') + html(t.i, s); positionBubble() }
@@ -467,9 +505,10 @@ export function createPet(host, opts) {
       if (talk !== t) return
       t.full = true
       const isLast = t.i === parts.length - 1
+      if (isLast && line.rate && !dragging) addRate(b, line.rate, line.text)
       if (isLast && line.react) addReactions(b, line.react)
       else if (isLast && line.chat) addChat(b, line.chat)
-      const read = Math.max(isLast ? (line.react || line.chat ? 9000 : 3500) : 700, [...parts[t.i]].length * (isLast ? 110 : 40))
+      const read = Math.max(isLast ? (line.react || line.chat ? 9000 : line.rate ? 6000 : 3500) : 700, [...parts[t.i]].length * (isLast ? 110 : 40))
       t.timer = setTimeout(() => { if (isLast) { hideBubble(); idle() } else { t.i++; startBeat() } }, read)
     }
     // 鼠标停在气泡上就别收（在犹豫点哪个反应）
@@ -489,8 +528,8 @@ export function createPet(host, opts) {
   function addReactions(b, m) {
     const row = doc.createElement('div'); row.className = 'fy-react'
     const opts2 = [
-      ['👍', '这种好玩', () => { vote(m.kind, 1); say({ text: pick(REPLY.up), anim: 'proud', chat: 'proud' }) }],
-      ['👎', '这种没意思', () => { vote(m.kind, -1); say({ text: pick(REPLY.down), anim: 'sigh', chat: 'sad' }) }],
+      ['👍', '这种好玩', () => { vote(m, 1); say({ text: pick(REPLY.up), anim: 'proud', chat: 'proud' }) }],
+      ['👎', '这种没意思', () => { vote(m, -1); say({ text: pick(REPLY.down), anim: 'sigh', chat: 'sad' }) }],
       ...shuffle((REACT[m.kind] || REACT.work).filter(r => r.replies.length)).slice(0, 1).map(r => [r.label, null, () => say({ text: pick(r.replies), anim: r.anim, chat: ANIM_MOOD[r.anim] || 'happy' })]),
       ['再翻一件', null, () => poke()],
     ]
@@ -498,6 +537,19 @@ export function createPet(host, opts) {
       const btn = doc.createElement('button'); btn.textContent = label; if (title) { btn.title = title; btn.className = 'emo' }
       btn.addEventListener('pointerdown', e => e.stopPropagation())
       btn.addEventListener('click', e => { e.stopPropagation(); fn() })
+      row.appendChild(btn)
+    }
+    b.appendChild(row)
+    positionBubble()
+  }
+  /** 短句（拖、甩、落地、碎碎念）底下一对小 👍 👎：记下来，👎 的以后不说，👍 的多说 */
+  function addRate(b, what, text) {
+    const row = doc.createElement('div'); row.className = 'fy-react fy-rate'
+    const done = msg => { row.innerHTML = ''; const s = doc.createElement('span'); s.className = 'fy-rated'; s.textContent = msg; row.appendChild(s); positionBubble() }
+    for (const [label, d, msg] of [['👍', 1, '记下了，以后多说这句'], ['👎', -1, '好，这句以后不说了']]) {
+      const btn = doc.createElement('button'); btn.textContent = label; btn.className = 'emo'; btn.title = d > 0 ? '这句好玩' : '这句不好'
+      btn.addEventListener('pointerdown', e => e.stopPropagation())
+      btn.addEventListener('click', e => { e.stopPropagation(); rateLine(what, text, d); done(msg); if (talk) { clearTimeout(talk.timer); talk.timer = setTimeout(() => { hideBubble(); idle() }, 1500) } })
       row.appendChild(btn)
     }
     b.appendChild(row)
@@ -513,13 +565,16 @@ export function createPet(host, opts) {
     const row = doc.createElement('div'); row.className = 'fy-react'
     const pool = CHAT[mood] || CHAT.happy
     const fresh = pool.filter(c => !recent.labels.includes(c[0]))
-    const two = shuffle(fresh.length >= 2 ? fresh : pool).slice(0, 2)
+    // 点得多的按钮更常出现（权重 1 + 点过次数 / 2，封顶 4）
+    const cw = c => Math.min(4, 1 + (fb.clicks[c[0]] || 0) / 2)
+    const two = (fresh.length >= 2 ? fresh : pool).map(c => [Math.random() ** (1 / cw(c)), c]).sort((a, b) => b[0] - a[0]).slice(0, 2).map(x => x[1])
     for (const [label, replies, to] of two) {
       const btn = doc.createElement('button'); btn.textContent = label
       btn.addEventListener('pointerdown', e => e.stopPropagation())
       btn.addEventListener('click', e => {
         e.stopPropagation()
         remember(recent.labels, label, 8)
+        fb.clicks[label] = (fb.clicks[label] || 0) + 1; logFb('聊天按钮', label, 1); saveFb()
         const left = replies.filter(r => !recent.replies.includes(r))
         const text = pick(left.length ? left : replies)
         remember(recent.replies, text, 30)
@@ -535,13 +590,12 @@ export function createPet(host, opts) {
     positionBubble()
   }
 
-  function vote(kind, d) {
-    const fb = { ...(opts.prefs.get().fb || {}) }
-    const cur = fb[kind] || [0, 0]
-    fb[kind] = d > 0 ? [cur[0] + 1, cur[1]] : [cur[0], cur[1] + 1]
-    opts.prefs.set({ fb })
+  function vote(m, d) {
+    const cur = fb.kinds[m.kind] || [0, 0]
+    fb.kinds[m.kind] = d > 0 ? [cur[0] + 1, cur[1]] : [cur[0], cur[1] + 1]
+    if (d) fb.lines[m.text] = d                      // 这一件本身也记：👎 的不再翻出来
+    logFb('旧账·' + (KIND[m.kind] || m.kind), m.text, d); saveFb()
     for (const k in queues) delete queues[k]       // 下一轮按新口味重新排
-    opts.onFeedback?.(kind, d)
   }
 
   // ---------- 戳 ----------
@@ -581,7 +635,7 @@ export function createPet(host, opts) {
     const idleOdds = pr0.mode === 'idle' ? 1 : (pr0.mode || 'all') === 'all' ? (typeof pr0.idleOdds === 'number' ? pr0.idleOdds : 0.25) : 0
     if (Math.random() < idleOdds) {
       const line = pickIdle()
-      if (line) return say({ text: line.text, tag: '碎碎念', anim: MOOD_ANIM[line.mood] || 'idle', chat: line.mood })
+      if (line) return say({ text: line.text, tag: '碎碎念', anim: MOOD_ANIM[line.mood] || 'idle', chat: line.mood, rate: '碎碎念' })
     }
     const me = thinking = { nags: 0 }
     hideBubble()
@@ -599,10 +653,10 @@ export function createPet(host, opts) {
     const qk = (pr.mode || 'all') + (pr.priv === false ? 0 : 1)
     if (!queues[qk]?.length) {
       // 带权重洗牌：👍 多的那一类更常出现，👎 多的少出现（加权蓄水池抽样的 key = u^(1/w)，大的先出）
-      const fb = pr.fb || {}
-      const w = k => { const [u, dn] = fb[k] || [0, 0]; return (1 + u) / (1 + dn * 2) }
-      queues[qk] = d.moments.filter(m => f(m) && (pr.priv === false || !m.sensitive.length))
-        .map(m => [Math.random() ** (1 / w(m.kind)), m]).sort((a, b) => a[0] - b[0]).map(x => x[1])
+      // 👎 过的那一件不再翻；👍 过的那一件权重再乘 3
+      const w = m => { const [u, dn] = fb.kinds[m.kind] || [0, 0]; return (1 + u) / (1 + dn * 2) * ((fb.lines[m.text] || 0) > 0 ? 3 : 1) }
+      queues[qk] = d.moments.filter(m => f(m) && (pr.priv === false || !m.sensitive.length) && !((fb.lines[m.text] || 0) < 0))
+        .map(m => [Math.random() ** (1 / w(m)), m]).sort((a, b) => a[0] - b[0]).map(x => x[1])
     }
     const m = queues[qk].pop()
     if (!m) {
@@ -622,9 +676,9 @@ export function createPet(host, opts) {
   function pickIdle() {
     const h = new Date().getHours()
     const fits = l => !l.hours || (l.hours[0] <= l.hours[1] ? h >= l.hours[0] && h < l.hours[1] : h >= l.hours[0] || h < l.hours[1])
-    const pool = IDLE.filter(fits)
+    const pool = IDLE.filter(fits).filter(l => !((fb.lines[l.text] || 0) < 0))
     const fresh = pool.filter(l => !idleSeen.includes(l.text))
-    const line = pick(fresh.length ? fresh : pool)
+    const line = pickLine(fresh.length ? fresh : pool)
     if (line) { idleSeen.push(line.text); if (idleSeen.length > 60) idleSeen.shift() }
     return line
   }
@@ -692,12 +746,15 @@ export function createPet(host, opts) {
         if (!list.length) return say({ text: `「${KIND[a.kind] || a.kind}」这一类本肥鱼一件都没有。`, anim: 'sigh' })
         return sayMoment(list[Math.floor(Math.random() * list.length)])
       }
-      case 'idle': { const l = pickIdle(); if (l) say({ text: l.text, tag: '碎碎念', anim: MOOD_ANIM[l.mood] || 'idle', chat: l.mood }); return }
+      case 'idle': { const l = pickIdle(); if (l) say({ text: l.text, tag: '碎碎念', anim: MOOD_ANIM[l.mood] || 'idle', chat: l.mood, rate: '碎碎念' }); return }
       case 'flip': hideBubble(); if (flipStart()) setTimeout(() => { flipFound(); setTimeout(flipStop, 900) }, 1500); return
       case 'walk': return walk(a.dir || 0)
       case 'sulk': pokes = []; sulkUntil = Date.now() + 4000; vy = -900; squash(0.8, 1.2, 160); kick(); return say({ text: pick(REPLY.angry), anim: 'angry' })
       case 'drop': hideBubble(); setExpr('normal'); y = 0; vy = 0; vx = 0; place(); kick(); return
       case 'home': hideBubble(); setExpr('normal'); x = W() - SW - 24; y = floor(); vx = vy = 0; place(); opts.prefs.set({ x, y }); return
+      case 'feedback': return JSON.parse(JSON.stringify(fb))
+      case 'unrate': rateLine('撤销', a.text, 0); for (const k in queues) delete queues[k]; return true
+      case 'clearfb': fb = emptyFeedback(); saveFb(); for (const k in queues) delete queues[k]; return true
       case 'reload': data = null; for (const k in queues) delete queues[k]; { const d = await load(true); return { moments: d ? d.moments.length : null } }
     }
   }
@@ -705,7 +762,7 @@ export function createPet(host, opts) {
   return {
     say, poke, debug,
     destroy() {
-      cancelAnimationFrame(raf); cancelAnimationFrame(walkRaf); clearTimeout(walkTimer); walking = null; clearInterval(restTimer); clearTimeout(blinkTimer); clearTimeout(exprTimer); clearTimeout(flipTimer); hideBubble(); closeMenu(); win.removeEventListener('resize', onResize); doc.removeEventListener('pointerdown', onDocDown, true); root.remove()
+      cancelAnimationFrame(raf); clearInterval(dragTalk); clearTimeout(fbTimer); Promise.resolve(opts.feedback?.save?.(fb)).catch(() => {}); cancelAnimationFrame(walkRaf); clearTimeout(walkTimer); walking = null; clearInterval(restTimer); clearTimeout(blinkTimer); clearTimeout(exprTimer); clearTimeout(flipTimer); hideBubble(); closeMenu(); win.removeEventListener('resize', onResize); doc.removeEventListener('pointerdown', onDocDown, true); root.remove()
     },
   }
 }

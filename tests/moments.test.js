@@ -214,3 +214,14 @@ test('碎碎念：500 句、不重复、≤40 字、心情都认识、任何钟�
     assert.ok(n >= 400, `${h} 点只有 ${n} 句`)
   }
 })
+
+test('反馈：👎 的不再挑、👍 的多挑；外面读进来的只收认得的字段', async () => {
+  const { pickRated, normFeedback, feedbackJson } = await import('../src/shared/feedback.js')
+  const fb = normFeedback({ lines: { a: -1, b: 1, x: 'oops' }, kinds: { work: [2, 1], bad: [1] }, clicks: { 摸摸头: 3, 零: 0 }, log: [{ t: 1, what: '落地', text: 'a', d: -1 }, { bad: 1 }], junk: 1 })
+  assert.deepEqual(fb.lines, { a: -1, b: 1 }); assert.deepEqual(fb.kinds, { work: [2, 1] }); assert.deepEqual(fb.clicks, { 摸摸头: 3 }); assert.equal(fb.log.length, 1)
+  const n = { a: 0, b: 0, c: 0 }
+  for (let i = 0; i < 4000; i++) n[pickRated(['a', 'b', 'c'], fb)]++
+  assert.equal(n.a, 0); assert.ok(n.b > n.c * 2, JSON.stringify(n))
+  assert.equal(pickRated(['a'], fb), 'a')                 // 全被 👎 了：当没投过
+  assert.ok(feedbackJson(fb).length < 1000)
+})

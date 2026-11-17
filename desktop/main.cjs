@@ -15,12 +15,20 @@ else if (!app.requestSingleInstanceLock()) app.exit(0)
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'fy', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }])
 
-const STATIC = { '/index.html': 'desktop/index.html', '/pet-engine.js': 'src/shared/pet-engine.js', '/lines.js': 'src/shared/lines.js', '/chat.js': 'src/shared/chat.js', '/idle.js': 'src/shared/idle.js' }
+const STATIC = { '/index.html': 'desktop/index.html', '/pet-engine.js': 'src/shared/pet-engine.js', '/lines.js': 'src/shared/lines.js', '/chat.js': 'src/shared/chat.js', '/idle.js': 'src/shared/idle.js', '/feedback.js': 'src/shared/feedback.js' }
 
 app.whenReady().then(() => {
   if (process.platform === 'darwin') app.dock?.hide()
   protocol.handle('fy', req => {
     const u = new URL(req.url)
+    if (u.pathname === '/feedback.json') {             // 主人的反馈，和网页那只共用一份
+      const f = path.join(STATE_DIR, 'feedback.json')
+      if (req.method === 'PUT') return req.text().then(t => {
+        if (t.length > 512 * 1024) return new Response('too big', { status: 413 })
+        try { JSON.parse(t); fs.writeFileSync(f, t); return new Response('ok') } catch (err) { console.error('[大肥鱼] 存反馈失败', err.message); return new Response(err.message, { status: 400 }) }
+      })
+      try { return new Response(fs.readFileSync(f), { headers: { 'content-type': 'application/json' } }) } catch { return new Response('null', { headers: { 'content-type': 'application/json' } }) }
+    }
     if (u.pathname === '/moments.json') {
       try { return new Response(fs.readFileSync(path.join(STATE_DIR, 'moments.json')), { headers: { 'content-type': 'application/json' } }) }
       catch (err) { console.error('[大肥鱼] 读台词失败', err.message); return new Response('{}', { status: 404 }) }

@@ -145,10 +145,11 @@ function DebugSection() {
   const [deskBusy, setDeskBusy] = useState(false)
   const [pr, setPr] = useState(prefs.get())
   const [msg, setMsg] = useState('')
+  const [fb, setFb] = useState(null)
   useEffect(() => {
     if (!open) return
     let alive = true
-    const tick = () => { pet({ do: 'state' }).then(s => alive && setSt(s === undefined ? 'none' : s)); call('desktop', {}).then(d => alive && setDesk(d.desktop)).catch(() => {}) }
+    const tick = () => { pet({ do: 'state' }).then(s => alive && setSt(s === undefined ? 'none' : s)); pet({ do: 'feedback' }).then(f => alive && f && setFb(f)); call('desktop', {}).then(d => alive && setDesk(d.desktop)).catch(() => {}) }
     tick(); const t = setInterval(tick, 1000)
     return () => { alive = false; clearInterval(t) }
   }, [open])
@@ -218,8 +219,41 @@ function DebugSection() {
         <div style={{ opacity: hidden ? 0.5 : 1 }}>
           {FIGURES.map(n => <B key={n} onClick={() => act({ do: 'show', name: n })}>{figLabel(n)}</B>)}
         </div>
+        <FeedbackView fb={fb} act={act} />
         {msg && <p className="ay-small ay-err">{msg}</p>}
       </>}
     </div>
+  )
+}
+
+/** 反馈记录：点过的 👍👎、按类别的票、常点的聊天按钮、最近几条；👎 过的可以一条条恢复 */
+function FeedbackView({ fb, act }) {
+  if (!fb) return null
+  const lines = Object.entries(fb.lines || {})
+  const up = lines.filter(([, d]) => d > 0), down = lines.filter(([, d]) => d < 0)
+  const kinds = Object.entries(fb.kinds || {}).map(([k, [u, d]]) => `${KIND[k] || k} 👍${u} 👎${d}`)
+  const clicks = Object.entries(fb.clicks || {}).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, n]) => `${k} ×${n}`)
+  const recent = (fb.log || []).slice(-8).reverse()
+  const time = t => { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}` }
+  const cut = (t, n = 36) => ([...t].length > n ? [...t].slice(0, n).join('') + '…' : t)
+  return (
+    <>
+      <h3 style={{ margin: '14px 0 6px', fontSize: 14 }}>反馈记录（网页和桌面共用）</h3>
+      <p className="ay-small">
+        喜欢的 {up.length} 句（以后多说）· 不想听的 {down.length} 句（以后不说）
+        {kinds.length ? <><br />按类别：{kinds.join('　')}</> : null}
+        {clicks.length ? <><br />常点的聊天按钮：{clicks.join('　')}</> : null}
+      </p>
+      {recent.length > 0 && <div className="ay-small ay-muted" style={{ marginBottom: 6 }}>
+        {recent.map((e, i) => <div key={i}>{time(e.t)} · {e.what} · {e.d > 0 ? '👍' : e.d < 0 ? '👎' : '撤销'} · {cut(e.text)}</div>)}
+      </div>}
+      {down.length > 0 && <div className="ay-small" style={{ marginBottom: 6 }}>
+        {down.map(([t]) => <div key={t} style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '2px 0' }}>
+          <span style={{ flex: 1 }}>👎 {cut(t, 50)}</span>
+          <button className="ay-btn" onClick={() => act({ do: 'unrate', text: t })}>恢复</button>
+        </div>)}
+      </div>}
+      {(lines.length > 0 || kinds.length > 0 || clicks.length > 0) && <button className="ay-btn" onClick={() => act({ do: 'clearfb' })}>清空反馈</button>}
+    </>
   )
 }

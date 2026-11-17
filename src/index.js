@@ -12,6 +12,7 @@ import { Store } from './store.js'
 import { dshAdapter } from './llm-adapter.js'
 import { Pet } from './pet.js'
 import { Desktop } from './desktop.js'
+import { normFeedback, feedbackJson } from './shared/feedback.js'
 import { Styler } from './styler.js'
 
 export const name = 'dsh-xiaobenben'
@@ -113,6 +114,12 @@ export function apply(ctx, config = {}) {
     },
     async 'style.clear'() {
       return styler.clear()
+    },
+    // 主人的反馈（👍👎、点过的按钮）：和桌面那只共用 feedback.json
+    async feedback(body) {
+      const file = path.join(path.dirname(store.file), 'feedback.json')
+      if (body.fb) { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, feedbackJson(body.fb)); return { ok: true } }
+      try { return { fb: normFeedback(JSON.parse(fs.readFileSync(file, 'utf8'))) } } catch (err) { if (err.code !== 'ENOENT') console.warn('[dsh-xiaobenben] 读反馈失败', err.message); return { fb: null } }
     },
     async desktop(body) {
       if (body.on === true) return { desktop: await desktop.start() }
