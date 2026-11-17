@@ -18,4 +18,4 @@
 ## 想加表情图？
 
 同目录放这些名字的透明 PNG（和 `normal.png` 同尺寸 360×600、脚底贴着下边、左右居中）就会自动换上，缺哪张就用 `normal.png` 加代码画的漫画符号：
-`happy.png` `sad.png` `surprised.png` `sleepy.png` `shy.png` `thinking.png`。
+`happy.png` `sad.png` `surprised.png` `sleepy.png` `shy.png` `thinking.png` `eat.png` `pout.png` `proud.png`。

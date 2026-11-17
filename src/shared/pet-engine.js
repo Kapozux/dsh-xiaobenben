@@ -9,7 +9,7 @@ import { LINES } from './lines.js'
  * 说话：
  *   - 对话版台词：一轮一行（「本肥鱼：」「主人：」标签不显示，主人的话换颜色），打字机一行一行出。
  *   - 点气泡：正在打字就直接显示完，打完了就下一行；最后一行读完自己淡出。
- *   - 说完底下 3 个按钮：两个这一类的反应 + 「再翻一件」。
+ *   - 说完底下一排：👍 👎 + 一个这一类的反应 + 「再翻一件」。👍👎 记在本机，以后那一类多说 / 少说。
  *   - 气泡贴着它、带尖角，靠边时自动换边；顶上一个小标签（哪一类 · 几天前）。
  * 左键点一下就翻旧账；只有主人点了才说话，不自己冒出来。
  */
@@ -52,9 +52,9 @@ export function rounds(text) {
 /** 台词里的动作 → 表情图（assets/xiaobenben/<名字>.png）。缺的图用 normal。 */
 export const EXPR = {
   idle: 'normal', work: 'thinking', file: 'thinking', yawn: 'sleepy', startle: 'surprised', drag: 'surprised',
-  caught: 'shy', bow: 'shy', sigh: 'sad', cheer: 'happy', eat: 'happy', poke: 'happy',
+  caught: 'shy', bow: 'shy', sigh: 'sad', cheer: 'happy', eat: 'eat', poke: 'happy', angry: 'pout', proud: 'proud',
 }
-export const FIGURES = ['normal', 'blink', 'happy', 'sad', 'surprised', 'sleepy', 'shy', 'thinking', 'flip-1', 'flip-2', 'flip-3', 'flip-4', 'flip-5', 'flip-6']
+export const FIGURES = ['normal', 'blink', 'happy', 'sad', 'surprised', 'sleepy', 'shy', 'thinking', 'eat', 'pout', 'proud', 'flip-1', 'flip-2', 'flip-3', 'flip-4', 'flip-5', 'flip-6']
 
 const CSS = `
 .fy-root { position: absolute; inset: 0; pointer-events: none; overflow: hidden; font-family: "XBB Rounded", -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; }
@@ -68,7 +68,14 @@ const CSS = `
 /* 表情：没有单独表情图时，用代码加漫画符号 + 身体动作 */
 .fy-fig { position: relative; width: 100%; height: 100%; transform-origin: 50% 100%; }
 .fy-mark { position: absolute; left: 70%; top: 4%; font-weight: 700; font-size: 26px; line-height: 1; color: #2a241d; pointer-events: none; white-space: nowrap; opacity: 0; }
-.fy-e-happy .fy-mark, .fy-e-surprised .fy-mark, .fy-e-sleepy .fy-mark, .fy-e-shy .fy-mark, .fy-e-sad .fy-mark, .fy-e-thinking .fy-mark { opacity: 1; }
+.fy-e-happy .fy-mark, .fy-e-surprised .fy-mark, .fy-e-sleepy .fy-mark, .fy-e-shy .fy-mark, .fy-e-sad .fy-mark, .fy-e-thinking .fy-mark,
+.fy-e-eat .fy-mark, .fy-e-pout .fy-mark, .fy-e-proud .fy-mark { opacity: 1; }
+.fy-e-eat .fy-mark { color: #e0568a; animation: fy-note 1s ease-in-out infinite; }
+.fy-e-eat .fy-fig { animation: fy-hop .4s ease-in-out 3; }
+.fy-e-pout .fy-mark { color: #e5484d; left: 68%; top: 10%; animation: fy-pop .2s ease-out; }
+.fy-e-pout .fy-fig { animation: fy-wiggle .25s ease-in-out 4; }
+.fy-e-proud .fy-mark { color: #e0a800; animation: fy-note 1.2s ease-in-out infinite; }
+.fy-e-proud .fy-fig { animation: fy-hop .5s ease-in-out 1; }
 .fy-e-happy .fy-mark { color: #e0568a; animation: fy-note 1s ease-in-out infinite; }
 .fy-e-happy .fy-fig { animation: fy-hop .5s ease-in-out 2; }
 .fy-e-surprised .fy-mark { color: #e5484d; font-size: 34px; left: 72%; animation: fy-pop .2s ease-out; }
@@ -184,7 +191,7 @@ export function createPet(host, opts) {
   })
   const mark = doc.createElement('div'); mark.className = 'fy-mark'
   fig.append(img, mark); float.appendChild(fig); body.appendChild(float)
-  const MARK = { happy: '♪', surprised: '！', sleepy: 'z', shy: '///', sad: '💧', thinking: '…' }
+  const MARK = { happy: '♪', surprised: '！', sleepy: 'z', shy: '///', sad: '💧', thinking: '…', eat: '♪', pout: '💢', proud: '✦' }
   const srcs = {}                              // 名字 → 地址（null = 没这张图）
   let expr = 'normal', exprTimer = 0
   const ready = Promise.all(FIGURES.map(n => Promise.resolve(opts.figureSrc(n)).catch(() => null).then(u => { srcs[n] = u })))
@@ -412,11 +419,13 @@ export function createPet(host, opts) {
     startBeat()
   }
 
-  /** 说完后底下那一排 3 个：两个这一类专属的反应（点了它接一句）+「再翻一件」。 */
+  /** 说完后底下那一排：👍 👎（记下来，以后这一类多说 / 少说）+ 一个这一类专属的反应（点了她接一句）+「再翻一件」。 */
   function addReactions(b, m) {
     const row = doc.createElement('div'); row.className = 'fy-react'
     const opts2 = [
-      ...shuffle((REACT[m.kind] || REACT.work).filter(r => r.replies.length)).slice(0, 2).map(r => [r.label, null, () => say({ text: pick(r.replies), anim: r.anim })]),
+      ['👍', '这种好玩', () => { vote(m.kind, 1); say({ text: pick(REPLY.up), anim: 'proud' }) }],
+      ['👎', '这种没意思', () => { vote(m.kind, -1); say({ text: pick(REPLY.down), anim: 'sigh' }) }],
+      ...shuffle((REACT[m.kind] || REACT.work).filter(r => r.replies.length)).slice(0, 1).map(r => [r.label, null, () => say({ text: pick(r.replies), anim: r.anim })]),
       ['再翻一件', null, () => poke()],
     ]
     for (const [label, title, fn] of opts2) {
@@ -454,12 +463,12 @@ export function createPet(host, opts) {
   async function poke() {
     closeMenu()
     const now = Date.now()
-    if (now < sulkUntil) { squash(0.9, 1.08, 120); if (!bubble) say({ text: pick(REPLY.sulk), anim: 'sigh' }); return }   // 生气那句还在就别盖掉
+    if (now < sulkUntil) { squash(0.9, 1.08, 120); if (!bubble) say({ text: pick(REPLY.sulk), anim: 'angry' }); return }   // 生气那句还在就别盖掉
     pokes = pokes.filter(t => now - t < 5000); pokes.push(now)
     if (pokes.length >= 5) {
       pokes = []; sulkUntil = now + 4000
       vy = -900; squash(0.8, 1.2, 160); kick()
-      return say({ text: pick(REPLY.angry), anim: 'startle' })
+      return say({ text: pick(REPLY.angry), anim: 'angry' })
     }
     if (thinking) {
       thinking.nags++
