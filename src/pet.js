@@ -4,23 +4,38 @@
  * - 确定性模板，不调模型；10 分钟缓存，同一时间只算一次。
  * 动画不归这里管：要动作时只给 dsh-pet 动画池里的名字（ANIM），由 dsh-pet 自己播。
  */
+import fs from 'node:fs'
+import path from 'node:path'
 import { buildMoments, dshTurns } from './core/moments.js'
+import { dshHome } from './store.js'
 import { loadClaudeTurns } from './sources/claude-turns.js'
 
 /** 时刻里的 anim → dsh-pet 动画池里的名字（2026-11-17 对过它 0.4.9 的配置，11 个都在池里） */
 export const ANIM = {
   idle: '待机呼吸休闲', work: '写代码', yawn: '哈欠连天', startle: '被吓一跳', caught: '偷吃零食被抓住',
   sigh: '工作状态-垂头叹气冒汗', bow: '女仆屈膝礼仪', cheer: '工作状态-雀跃庆祝', eat: '吃白饭', file: '工作状态-清点归档',
-  poke: '点击回应-开心跃动',
+  poke: '点击回应-开心跃动', drag: '被鼠标拖拽悬空反馈',
+}
+
+/** 自己那只大肥鱼的动画：本插件不带画，借本机装着的 dsh-pet（MIT）的透明 webm；配置优先，否则在 $DSH_HOME/profiles/* 里找，找不到页面用备用形象 */
+export function findPetAssets(configured) {
+  const cands = []
+  if (configured) cands.push(configured)
+  try {
+    const profiles = path.join(dshHome(), 'profiles')
+    for (const p of fs.readdirSync(profiles)) cands.push(path.join(profiles, p, 'node_modules', 'dsh-pet', 'assets', 'webm'))
+  } catch {}
+  return cands.find(d => { try { return fs.statSync(path.join(d, ANIM.idle + '.webm')).isFile() } catch { return false } }) || null
 }
 
 export class Pet {
   /**
-   * @param {{ sessionQuery: any, store: import('./store.js').Store, days?: number, loadClaude?: typeof loadClaudeTurns }} deps
+   * @param {{ sessionQuery: any, store: import('./store.js').Store, assets?: string|null, days?: number, loadClaude?: typeof loadClaudeTurns }} deps
    */
-  constructor({ sessionQuery, store, days = 120, loadClaude = loadClaudeTurns }) {
+  constructor({ sessionQuery, store, assets = null, days = 120, loadClaude = loadClaudeTurns }) {
     this.sessionQuery = sessionQuery
     this.store = store
+    this.assetsDir = findPetAssets(assets)
     this.days = days
     this.loadClaude = loadClaude
     this.cache = null
@@ -89,8 +104,14 @@ export class Pet {
       report.push({ id: 'claude', sessions: r.sessions, skipped: r.skipped })
     }
     const moments = buildMoments(turns, { since, days: this.days })
-    const value = { moments, report, turns: turns.filter(t => t.start >= since).length, days: this.days }
+    const value = { moments, report, turns: turns.filter(t => t.start >= since).length, days: this.days, anims: this.assetsDir ? Object.keys(ANIM) : [] }
     this.cache = { key, at: Date.now(), value }
     return value
+  }
+
+  /** @returns {Buffer|null} */
+  anim(name) {
+    if (!this.assetsDir || !Object.hasOwn(ANIM, name)) return null
+    try { return fs.readFileSync(path.join(this.assetsDir, ANIM[name] + '.webm')) } catch { return null }
   }
 }

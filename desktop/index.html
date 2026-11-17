@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>大肥鱼</title>
+<style>html,body{margin:0;height:100%;background:transparent;overflow:hidden}#host{position:fixed;inset:0}</style></head>
+<body><div id="host"></div>
+<script type="module">
+import { createPet } from './pet-engine.js'
+const LS = 'fy.desktop'
+const prefs = {
+  get() { try { return { mode: 'all', priv: true, ...JSON.parse(localStorage.getItem(LS) || '{}') } } catch { return { mode: 'all', priv: true } } },
+  set(p) { try { localStorage.setItem(LS, JSON.stringify({ ...prefs.get(), ...p })) } catch {} },
+}
+let anims = false
+const seen = new Map()
+const load = () => fetch('moments.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(d => { if (d?.moments) { if (!!d.anims?.length !== anims) { anims = !!d.anims?.length; engine.refreshFigure() } return d } return null }).catch(e => { console.error('读台词失败', e); return null })
+const engine = createPet(document.getElementById('host'), {
+  size: 260, prefs,
+  hasAnim: () => anims,
+  animSrc: k => { if (!seen.has(k)) seen.set(k, fetch('anim/' + k, { method: 'HEAD' }).then(r => r.ok ? 'anim/' + k : null).catch(() => null)); return seen.get(k) },
+  loadMoments: load,
+  onPointerArea: inside => window.fy.hover(inside),
+  note: d => d ? `最近 ${d.days} 天 · ${d.moments.length} 句（dsh 每 10 分钟帮本肥鱼重翻一次）。` : '',
+  menuExtras: () => [{ label: '回到 dsh 网页里', onClick: () => window.fy.quit() }],
+})
+window.__fy = engine
+load()
+</script></body></html>
