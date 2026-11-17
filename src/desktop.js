@@ -47,7 +47,7 @@ export class Desktop {
   async resume() {
     const d = this.store.read().desktop
     if (!d?.on) return
-    if (alive(d.pid)) { this.#startTimer(); return }
+    if (alive(d.pid)) { await this.#writeMoments(true).catch(err => console.warn('[dsh-agent-year] 重写台词失败', err)); this.#startTimer(); return }
     await this.start().catch(err => console.warn('[dsh-agent-year] 大肥鱼上桌面失败', err))
   }
 

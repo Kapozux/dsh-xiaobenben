@@ -16,10 +16,12 @@ import { sensitiveCats } from './sensitive.js'
 export const INJECTED = ['<', '[Request interrupted', 'Another Claude session sent a message', 'This session is being continued',
   'Base directory for this skill', '# Workflow authoring reference', 'Continue from where you left off', 'Caveat: The messages below']
 export const FILLER = /^(继续|继续吧|接着|接着来|ok|okay|好|好的|行|可以|嗯|对|是|yes|go|continue|嗯嗯|好滴|没事|随便|你看着办|你决定|都行)[\s。.!！~～（(）)…]*$/i
-const COMPLAIN = /(不对|错了|又错|又是|你又|搞什么|什么鬼|还是报错|还是不行|还是不对|没用|乱改|别乱|不是这样|离谱|难绷|无语|哪来的|你在干嘛|干嘛呢|为什么又|怎么又|怎么还|不是让你|我不是说|白屏|挂了|崩了|\?\?|？？)/
+const COMPLAIN = /(不对|错了|又错|又是|你又|搞什么|什么鬼|还是报错|还是不行|还是不对|没用(啊|的|了|吧|[。！!？?]|$)|有什么用|乱改|别乱|不是这样|离谱|难绷|无语|哪来的|你在干嘛|干嘛呢|为什么又|怎么又|怎么还|不是让你|我不是说|白屏|挂了|崩了|\?\?|？？)/
 const SORRY = /(你说得对|你是对的|是我的错|我的错|我搞错了|我错了|我理解错了|我看错了|抱歉|对不起|是我疏忽|我疏忽了|我漏了|我刚才.{0,8}(错|不对)|you'?re right|my mistake|i was wrong|apologi)/i
 const ASK = /(帮我|给我|你(去|来|先|把|再|直接)|修|改|加|写|做|弄|查|跑|删|换|整理|实现|接入|装|看看|试试|重构|优化|导出)/
-const DONE = /(改好了|修好了|已修复|已经修好|搞定|都过了|全过了|全部通过|已完成|没问题了|好了。|fixed|all tests pass)/i
+const DONE = /(改好了|修好了|修复了|已修复|已经修好|搞定|都过了|全过了|通过了|全部通过|已完成|完成了|做好了|写好了|加好了|弄好了|接好了|换好了|好了|没问题了|可以用了|能用了|生效了|已经(改|加|修|换|删|接|做|写|装|去掉|处理)|现在(可以|会|能|就|已经)|已(改|加|修|换|删|接|装|去掉)|fixed|done|all tests pass|works now)/i
+/** 「说好了却挨骂」的那句回嘴：比 COMPLAIN 宽，加上「还是 / 没变 / 不行 / 看不到」这类「你说好了但其实没好」 */
+const BACKFIRE = new RegExp(COMPLAIN.source + '|还是(不|没|报错|一样|有|那样|空)|没变|没反应|没效果|没有用|不行|用不了|不能用了|不好使|没有(用|变|反应|效果|出来)|还没|根本|怎么(还|又|没|不)|为什么(还|又|没|不)|bug|报错|失败|不显示|看不到|没看到|打不开|是空的|白的|卡住|有问题|不work|doesn.?t work|not working|still', 'i')
 
 /** 一段空闲最多算 3 分钟：等主人点批准、去吃饭，不算本肥鱼在干活。 */
 const IDLE_CAP = 180e3
@@ -201,10 +203,16 @@ const CAP = { work: 400, late: 150, report: 200, sorry: 150, complain: 150, caug
  */
 export function buildMoments(turns, { since = 0, now = Date.now(), days = null } = {}) {
   const moments = []
+  const seenSrc = new Set()
   const add = (kind, ts, text, anim, src = '') => {
+    // 同一件事只说一次：Claude Code 续上旧会话时会把前面的记录抄进新文件，同一轮会出现好几次（模板按种子挑，文字不同，光按文字去重拦不住）
+    const key = kind + '|' + (src ? src.replace(/\s+/g, '').slice(0, 120) : text)
+    if (kind !== 'stat' && seenSrc.has(key)) return
+    seenSrc.add(key)
     moments.push({ kind, ts, day: dayKey(ts), hour: new Date(ts).getHours(), text, anim, sensitive: src ? sensitiveCats(src) : [] })
   }
   const real = turns.filter(t => t.start >= since)
+  const caughtNext = new Set()
 
   for (const tr of real) {
     const tk = task(tr)
@@ -224,13 +232,17 @@ export function buildMoments(turns, { since = 0, now = Date.now(), days = null }
     }
 
     const lastText = tr.texts.at(-1) || ''
-    const claim = sentenceWith(lastText, DONE, 30)
-    if (claim && isHuman(tr.next) && COMPLAIN.test(tr.next) && len(tr.next) <= 40) {
-      add('caught', tr.start, fill(pick(TPL.caught, seed), { w, claim, next: short(tr.next, 30) }), 'caught', claim + ' ' + tr.next)
+    // 被抓包：这一轮最后几段话里有一句「好了 / 已经改了」，主人下一句就是「还是不行」之类
+    let claim = null
+    for (const tx of tr.texts.slice(-3).reverse()) { claim = sentenceWith(tx, DONE, 40); if (claim) { claim = claim.replace(/^[-*#>\s]+/, ''); break } }
+    const nextFirst = (tr.next || '').split('\n')[0].trim()
+    if (claim && isHuman(tr.next) && !FILLER.test(nextFirst) && BACKFIRE.test(nextFirst) && len(nextFirst) >= 2 && len(nextFirst) <= 60) {
+      add('caught', tr.start, fill(pick(TPL.caught, seed), { w, claim, next: short(nextFirst, 30) }), 'caught', claim + ' ' + nextFirst)
+      caughtNext.add(tr.next)
     }
 
     const first = tr.text.split('\n')[0].trim()
-    if (COMPLAIN.test(first) && len(first) <= 40 && !claim) {
+    if (COMPLAIN.test(first) && len(first) <= 40 && !caughtNext.has(tr.text)) {     // 已经当成「被抓包」说过的那句不再当挨骂说
       add('complain', tr.start, fill(pick(TPL.complain, seed), { w, said: unq(short(first, 30)) }), 'sigh', first)
     }
 

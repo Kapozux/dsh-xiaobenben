@@ -34,7 +34,7 @@ export function Pet() {
     const syncDesktop = d => { host.style.display = d?.desktop?.on ? 'none' : '' }
     const syncAnims = d => { if (d && !!d.anims?.length !== anims) { anims = !!d.anims?.length; engine?.refreshFigure() } }
     engine = createPet(host, {
-      size: 200,
+      size: 260,
       prefs,
       hasAnim: () => anims,
       animSrc,

@@ -13,7 +13,7 @@ let anims = false
 const seen = new Map()
 const load = () => fetch('moments.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(d => { if (d?.moments) { if (!!d.anims?.length !== anims) { anims = !!d.anims?.length; engine.refreshFigure() } return d } return null }).catch(e => { console.error('读台词失败', e); return null })
 const engine = createPet(document.getElementById('host'), {
-  size: 200, prefs,
+  size: 260, prefs,
   hasAnim: () => anims,
   animSrc: k => { if (!seen.has(k)) seen.set(k, fetch('anim/' + k, { method: 'HEAD' }).then(r => r.ok ? 'anim/' + k : null).catch(() => null)); return seen.get(k) },
   loadMoments: load,

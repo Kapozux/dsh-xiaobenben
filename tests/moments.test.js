@@ -127,3 +127,17 @@ test('反应：每类至少 10 个按钮、按钮 ≤6 字；👍👎 第一句�
   assert.equal(LINES.up[0], '本肥鱼看来说的挺有道理，谢谢主人对我的鼓励！')
   assert.equal(LINES.down[0], '呜呜呜主人，你不能这么说我')
 })
+
+test('被抓包放宽：「已经改了，刷新就能看到」+「刷新了还是没变啊」算；「你能不能用OR帮我」「没用中国模型？」不算；同一件事抄了两份只说一次', () => {
+  const mk = (next, key) => dshTurns(key, { cwd: '/x/p' }, [
+    { type: 'user/message', time: min(0), data: { content: [{ type: 'text', text: '帮我把按钮改成蓝色' }], source: { kind: 'user' } } },
+    { type: 'assistant/message', time: min(2), data: { message: { content: [{ type: 'text', text: '我已经改成蓝色了，刷新就能看到。' }] } } },
+    { type: 'turn/end', time: min(2), data: { reason: { kind: 'completed' } } },
+    { type: 'user/message', time: min(5), data: { content: [{ type: 'text', text: next }], source: { kind: 'user' } } },
+  ])
+  const caught = turns => buildMoments(turns, { now: min(60) }).filter(m => m.kind === 'caught')
+  assert.equal(caught(mk('刷新了还是没变啊', 'a')).length, 1)
+  assert.equal(caught(mk('你能不能用OR帮我弄转写？', 'b')).length, 0)
+  assert.equal(caught(mk('抽证据卡这么贵没用中国模型？', 'c')).length, 0)
+  assert.equal(caught([...mk('刷新了还是没变啊', 'd'), ...mk('刷新了还是没变啊', 'e')]).length, 1)
+})

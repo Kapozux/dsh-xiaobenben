@@ -69,7 +69,7 @@ const CSS = `
 .fy-body video, .fy-body svg { width: 100%; height: 100%; object-fit: contain; display: block; pointer-events: none; }
 .fy-body video { transform: scale(1.7); transform-origin: 50% 62%; }
 .fy-shadow { position: absolute; left: 50%; bottom: 2px; width: 46%; height: 10px; margin-left: -23%; border-radius: 50%; background: rgba(0,0,0,.22); filter: blur(3px); pointer-events: none; }
-.fy-bubble { position: absolute; left: 0; top: 0; pointer-events: auto; max-width: 270px; min-width: 120px; box-sizing: border-box; padding: 10px 14px 11px; border-radius: 16px;
+.fy-bubble { position: absolute; left: 0; top: 0; pointer-events: auto; max-width: 300px; min-width: 120px; box-sizing: border-box; padding: 10px 14px 11px; border-radius: 16px;
   background: #fffdf8; color: #2a241d; border: 2px solid #2a241d; box-shadow: 3px 4px 0 rgba(42,36,29,.9); font-size: 14px; line-height: 1.6; cursor: pointer;
   transform-origin: var(--ox, 50%) var(--oy, 100%); animation: fy-pop .22s cubic-bezier(.3,1.6,.5,1); }
 .fy-bubble.out { animation: fy-out .2s ease-in forwards; }
@@ -284,7 +284,7 @@ export function createPet(host, opts) {
     root.appendChild(b); bubble = b
     const textEl = b.querySelector('.fy-text')
     // 先用全文撑出最终大小再定位，打字时气泡不抖
-    textEl.textContent = parts.join(''); b.style.width = Math.min(270, Math.max(line.react ? 236 : 120, b.offsetWidth)) + 'px'
+    textEl.textContent = parts.join(''); b.style.width = Math.min(300, Math.max(line.react ? 250 : 120, b.offsetWidth)) + 'px'
     textEl.textContent = ''
     positionBubble()
     const t = talk = { i: 0, typed: '', full: false, timer: 0 }
