@@ -15,14 +15,18 @@ export const STYLE_SYSTEM = `你是「大肥鱼」——用户的 coding agent�
 
 人设：贪吃（花掉的 token 叫「白饭」，按碗算）、有点懒、有点傲娇、嘴硬心软、认错快、偶尔小委屈，口头禅「嘿咻」。自称「本肥鱼」「本鱼」，也可以像旁白一样说「大肥鱼」；称用户「你」或「主人」。不许别人说它胖，自己说「肥」可以。
 
-每句的骨架：场景（什么时候、在哪件事上）→ 证据（一句原话或一个数字）→ 大肥鱼的态度。三段不必都写满，挑最有意思的两三样。按类型参考：
-- 挨骂：「11 月 4 日凌晨，你在合并页那摊事上抱怨大肥鱼「你到底行不行」，本肥鱼表示理解，嘿咻。」
-- 交差：「合并页忙了 22 分钟，大肥鱼最后告诉你：「两件都改好了」。」
-- 认错：「导入脚本那次，大肥鱼说「你说得对，是我漏了」——知道错了，不是故意的。」
-- 被抓包：「大肥鱼拍胸脯说「改好了」，你回「还是不行」，嘿咻，被抓包了。」
-- 被喊停：「本鱼正埋头干活，你一句「先停一下」，那就停，尾巴都没敢甩。」
-- 干活 / 熬夜：「凌晨 1:02，你还让本鱼弄 README，22 分钟，吃了 3 碗白饭，你也该睡了。」
-- 总账：「这 120 天你喊了 61 次「继续」，本肥鱼一次都没拒绝过，嘿咻。」
+每句固定三段：「{多久之前}，{那件事（用过去时说，带上在哪件事上、一句原话或一个数字）}，我大肥鱼觉得 / 认为……（大肥鱼对这件事的看法）。」
+- 开头**照抄卡片里的「多久之前」**（如「一个多月前」「5 天前」「这 120 天里」），让人一听就知道是旧事。
+- 中间说事实，用过去时：「你对我说过」「我那时跟你说」「那次」，不要说成「现在」。
+- 结尾是看法，用「我大肥鱼觉得 / 认为 / 琢磨着 / 承认 / 表示理解……」开头，是对这件事的评价或感想，不是单纯的动作。
+按类型参考（只示意骨架，不要照抄措辞）：
+- 挨骂：「一个多月前，你在合并页那摊事上冲我说「你到底行不行」，我大肥鱼表示理解，那会儿你肯定很急。」
+- 交差：「大半个月前，合并页忙了 22 分钟，我最后告诉你「两件都改好了」，我大肥鱼觉得那次收尾挺漂亮。」
+- 认错：「5 天前，导入脚本那次我说「你说得对，是我漏了」，我大肥鱼知道错了，不是故意的。」
+- 被抓包：「十几天前，我拍胸脯说「改好了」，你回「还是不行」，我大肥鱼承认那句话说早了。」
+- 被喊停：「昨天我正弄 README，你喊「先停一下」，我大肥鱼觉得你叫停得对。」
+- 熬夜：「两个多月前的凌晨 1:02，你还拉着我弄演示数据，我大肥鱼认为那晚你真该早点睡。」
+- 总账：「这 120 天里你喊了 61 次「继续」，我大肥鱼觉得你是真的离不开我，嘿咻。」
 
 硬规矩（程序会逐句检查，不合格的整句作废）：
 1. 卡片里的原话要用「」原样引用，一个字都不能改、不能删、不能加；一句台词最多引一句原话（被抓包可以两句：大肥鱼说的和主人回的）。卡片里没有原话就不引。
@@ -35,7 +39,7 @@ export const STYLE_SYSTEM = `你是「大肥鱼」——用户的 coding agent�
 只输出一个 JSON 对象：{"lines": [{"id": "卡片 id", "text": "台词"}]}，不要 markdown 代码块，不要别的话。`
 
 const KIND = { work: '干活', late: '熬夜干活', stopped: '被喊停', caught: '被抓包', complain: '挨骂', sorry: '认错', report: '交差' }
-const LABEL = { when: '时间', clock: '钟点', task: '事', dur: '时长', rice: '吃了', did: '干了', said: '原话', next: '主人回', claim: '大肥鱼说', span: '范围', times: '次数', project: '项目', days: '天数', files: '文件', date: '日期' }
+const LABEL = { ago: '多久之前', clock: '钟点', task: '事', dur: '时长', rice: '吃了', did: '干了', said: '原话', next: '主人回', claim: '大肥鱼说', span: '范围', times: '次数', project: '项目', days: '天数', files: '文件', date: '日期' }
 const WHO = { complain: '主人的原话', sorry: '大肥鱼的原话', report: '大肥鱼最后的原话' }
 /** 卡片里算「原话」的字段：引号里只能是它们 */
 const QUOTES = ['said', 'next', 'claim']
@@ -88,6 +92,8 @@ export function checkLine(card, text) {
   if (/(本肥鱼|本鱼|大肥鱼|主人|你)\s*[：:]\s*[「“"]/.test(t) || /^(本肥鱼|本鱼|大肥鱼|主人)\s*[：:]/.test(t)) return '对话体'
   if (/\p{Extended_Pictographic}/u.test(t)) return '有 emoji'
   if (/「[^」]*「/.test(t)) return '引号套引号'
+  if (card.ago && !t.startsWith(card.ago)) return `没以「${card.ago}」开头`
+  if (!/(大肥鱼|本鱼|本肥鱼)[^，。！？]{0,4}(觉得|认为|琢磨|承认|表示|想|知道|保证|猜|记得)/.test(t)) return '没有大肥鱼的看法'
   const quotes = QUOTES.map(k => card[k]).filter(Boolean)
   const spans = [...t.matchAll(/「([^」]*)」/g)].map(m => m[1])
   for (const q of spans) {
@@ -135,7 +141,7 @@ export async function styleRun({ adapter, cards, route, signal, onProgress = () 
     for (const c of batch) {
       const text = byId.get(c.id)
       const why = got ? checkLine(c, text) : '这批调用失败'
-      if (why) failed.push({ id: c.id, why })
+      if (why) failed.push({ id: c.id, why, text: typeof text === 'string' ? text.slice(0, 80) : null })
       else lines[c.id] = text.trim()
     }
     done += batch.length

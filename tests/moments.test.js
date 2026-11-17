@@ -1,9 +1,9 @@
 // 大肥鱼的台词：dsh 事件和 Claude Code JSONL 切出来的轮一样算；挑时刻的规则；私事只看原话。
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildMoments, claudeTurns, dshTurns, fill, fillFit, topic, width } from '../src/core/moments.js'
+import { buildMoments, claudeTurns, dshTurns, fill, fillFit, say, ago, topic, width } from '../src/core/moments.js'
 import { check } from '../scripts/check-lines.mjs'
-import { TPL } from '../src/core/lines.js'
+import { FACT, VIEW } from '../src/core/lines.js'
 
 const T0 = new Date(2026, 10, 3, 14, 0).getTime()
 const min = m => T0 + m * 60e3
@@ -56,7 +56,7 @@ test('挑时刻：干活、说好了却挨骂、认错，都带真数字和原�
   const kinds = ms.map(m => m.kind)
   const work = ms.find(m => m.kind === 'work')
   assert.ok(work, kinds.join(','))
-  assert.match(work.text, /修登录页的报错/)
+  assert.match(work.text, /修登录页/)
   assert.doesNotMatch(work.text, /「修登录页/)                 // 任务名不套引号
   assert.match(work.text, /9 分钟|碗/)
   const caught = ms.find(m => m.kind === 'caught')
@@ -100,18 +100,26 @@ test('Claude Code：被打断后主人的下一句是「继续」不算喊停；
   assert.match(stopped[0].text, /别动 〔路径〕 那个文件/)
 })
 
-test('模板全部过检查：一个人说、没有换行和说话人标签、引号不套娃、典型值下 ≤40 字、不重复', () => {
-  for (const [k, r] of Object.entries(check(TPL))) {
-    assert.ok(r.n >= 25, k)
-    assert.deepEqual(r.bad.map(b => `#${b.i} ${b.p.join('；')} ← ${b.t}`), [], k)
+test('模板全部过检查：事实句 + 我大肥鱼的看法，不换行、不对话体、引号不套娃、组合起来 ≤50 字', () => {
+  for (const [k, r] of Object.entries(check())) {
+    assert.deepEqual(r.bad, [], k)
     assert.equal(r.dup, 0, k)
+    assert.ok(r.combos >= 18, k)
   }
-  const full = { w: '10 月 3 日中午', clock: '1:02', task: '导入脚本重构', dur: '12 分钟', doing: '，改了 4 个文件', rice: '小半碗', next: '还是不对啊', claim: '改好了', said: '你说得对', project: 'my-app', days: 23, files: 41, n: 37, span: '这 120 天', date: '10 月 3 日' }
-  for (const list of Object.values(TPL)) for (const tpl of list) for (const vars of [full, { ...full, doing: '', rice: '3 碗' }]) {
-    const out = fill(tpl, vars)
-    assert.doesNotMatch(out, /[{}]|，，|。，|「，|\n/, out)
-    assert.doesNotMatch(out, / 小半碗/, out)
+  const full = { clock: '1:02', task: '导入脚本重构', dur: '12 分钟', doing: '，改了 4 个文件', rice: '小半碗', next: '还是不对啊', claim: '改好了', said: '你说得对', project: 'my-app', days: 23, files: 41, n: 37, date: '10 月 3 日' }
+  for (const list of Object.values(FACT)) for (const f of list) for (const vars of [full, { ...full, doing: '', rice: '3 碗' }]) {
+    assert.doesNotMatch(fill(f, vars), /[{}]|，，|。，|「，|\n| 小半碗/)
   }
+})
+
+test('每句三段：多久之前，那件事，我大肥鱼的看法', () => {
+  const now = new Date(2026, 10, 17, 12).getTime()
+  assert.equal(ago(now - 40 * 864e5, now), '一个多月前')
+  assert.equal(ago(now - 864e5, now), '昨天')
+  const out = say('complain', 'x', '一个多月前', { task: '合并页', said: '你到底行不行' })
+  assert.match(out, /^一个多月前，.*「你到底行不行」.*，(我大肥鱼|大肥鱼)/)
+  assert.ok(VIEW.complain.some(v => out.endsWith(v)))
+  assert.equal(say('complain', 'x', '一个多月前', { said: '这句原话特别特别长长长长长长长长长长长长长长长长长长长长长长长长长长长长' }), null)
 })
 
 test('任务名压成 ≤10 字、不带引号：去客套、去长英文词、去括号补充；带路径或压不下就不要', () => {
@@ -132,7 +140,7 @@ test('原话：脏话打成 ××；在空格处截时前面至少两个汉字', 
     { type: 'turn/end', time: min(2), data: { reason: { kind: 'completed' } } },
     { type: 'user/message', time: min(3), data: { content: [{ type: 'text', text: next }], source: { kind: 'user' } } },
   ])
-  const caught = buildMoments(mk('还是不行啊，你他妈搞干净'), { now: min(60) }).find(m => m.kind === 'caught')
+  const caught = buildMoments(mk('还是不行你他妈搞干净'), { now: min(60) }).find(m => m.kind === 'caught')
   assert.ok(caught)
   assert.doesNotMatch(caught.text, /他妈/)
   assert.match(caught.text, /××/)
