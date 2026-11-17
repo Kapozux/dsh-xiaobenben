@@ -53,12 +53,17 @@ export function rounds(text) {
   })
 }
 
-/** 台词里的动作 → 表情图（assets/xiaobenben/<名字>.png）。缺的图用 normal。 */
+/**
+ * 台词里的动作 → 表情图（assets/xiaobenben/<名字>.png）。给一串的随机挑一张有图的，同一类事不总是同一个样子；
+ * 都没图用 normal。表情（脸）和姿势（记账、数饭碗、本子挡脸……）混着用。
+ */
 export const EXPR = {
-  idle: 'normal', work: 'thinking', file: 'thinking', yawn: 'sleepy', startle: 'surprised', drag: 'surprised',
-  caught: 'shy', bow: 'shy', sigh: 'sad', cheer: 'happy', eat: 'eat', poke: 'happy', angry: 'pout', proud: 'proud',
+  idle: 'normal', work: ['write', 'thinking'], file: ['write', 'thinking'], yawn: 'sleepy', startle: 'surprised', drag: 'surprised',
+  caught: ['hide', 'shy'], bow: ['bow', 'shy'], sigh: 'sad', cheer: ['spout', 'happy'], eat: ['count', 'eat'], poke: 'happy',
+  angry: ['accuse', 'pout'], proud: 'proud',
 }
-export const FIGURES = ['normal', 'blink', 'happy', 'sad', 'surprised', 'sleepy', 'shy', 'thinking', 'eat', 'pout', 'proud', 'flip-1', 'flip-2', 'flip-3', 'flip-4', 'flip-5', 'flip-6']
+export const POSES = ['write', 'count', 'hide', 'accuse', 'spout', 'bow']
+export const FIGURES = ['normal', 'blink', 'happy', 'sad', 'surprised', 'sleepy', 'shy', 'thinking', 'eat', 'pout', 'proud', ...POSES, 'flip-1', 'flip-2', 'flip-3', 'flip-4', 'flip-5', 'flip-6']
 
 const CSS = `
 .fy-root { position: absolute; inset: 0; pointer-events: none; overflow: hidden; font-family: "XBB Rounded", -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; }
@@ -205,13 +210,18 @@ export function createPet(host, opts) {
   /** 换表情：有这张表情图就换图；没有就用 normal 图 + 代码画的漫画符号和动作。ms 后回到 normal（0 = 保持到下次换） */
   function setExpr(name, ms = 0) {
     clearTimeout(exprTimer)
-    expr = name in MARK || name === 'normal' ? name : 'normal'
+    expr = name in MARK || name === 'normal' || (POSES.includes(name) && srcs[name]) ? name : 'normal'
     float.className = 'fy-float' + (expr !== 'normal' && !srcs[expr] ? ' fy-e-' + expr : '')
     mark.textContent = expr === 'shy' ? '' : MARK[expr] || ''
     show(expr)
     if (ms) exprTimer = setTimeout(() => setExpr('normal'), ms)
   }
-  const playAnim = (anim, ms = 0) => setExpr(EXPR[anim] || 'normal', ms)
+  const playAnim = (anim, ms = 0) => {
+    const e = EXPR[anim] || 'normal'
+    if (!Array.isArray(e)) return setExpr(e, ms)
+    const have = e.filter(n => srcs[n])
+    setExpr(have.length ? have[Math.floor(Math.random() * have.length)] : e.at(-1), ms)
+  }
   const idle = () => setExpr('normal')
   // 眨眼：只在 normal 时眨，每 2.5～6 秒一次，偶尔连眨两下
   let blinkTimer = 0
