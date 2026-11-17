@@ -15,7 +15,7 @@ else if (!app.requestSingleInstanceLock()) app.exit(0)
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'fy', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }])
 
-const STATIC = { '/index.html': 'desktop/index.html', '/pet-engine.js': 'src/shared/pet-engine.js', '/lines.js': 'src/shared/lines.js', '/chat.js': 'src/shared/chat.js' }
+const STATIC = { '/index.html': 'desktop/index.html', '/pet-engine.js': 'src/shared/pet-engine.js', '/lines.js': 'src/shared/lines.js', '/chat.js': 'src/shared/chat.js', '/idle.js': 'src/shared/idle.js' }
 
 app.whenReady().then(() => {
   if (process.platform === 'darwin') app.dock?.hide()

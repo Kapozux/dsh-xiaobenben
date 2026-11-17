@@ -202,3 +202,15 @@ test('无限轮闲聊：每个心情至少 6 个按钮、每个 3 句回话；�
   }
   for (const list of Object.values(LINES.react)) for (const r of list) if (r.replies.length) assert.ok(ANIM_MOOD[r.anim], r.anim)
 })
+
+test('碎碎念：500 句、不重复、≤40 字、心情都认识、任何钟点都有 400 句以上能说', async () => {
+  const { IDLE } = await import('../src/shared/idle.js')
+  const { CHAT } = await import('../src/shared/chat.js')
+  assert.equal(IDLE.length, 500)
+  assert.equal(new Set(IDLE.map(l => l.text)).size, 500)
+  for (const l of IDLE) { assert.ok([...l.text.replace(/\s/g, '')].length <= 40, l.text); assert.ok(CHAT[l.mood], l.mood) }
+  for (let h = 0; h < 24; h++) {
+    const n = IDLE.filter(l => !l.hours || (l.hours[0] <= l.hours[1] ? h >= l.hours[0] && h < l.hours[1] : h >= l.hours[0] || h < l.hours[1])).length
+    assert.ok(n >= 400, `${h} 点只有 ${n} 句`)
+  }
+})

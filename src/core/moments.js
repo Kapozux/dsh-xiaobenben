@@ -264,7 +264,7 @@ export function say(kind, seed, base, ...varsList) {
     for (let i = 0; i < list.length; i++) {
       const t = list[(start + i) % list.length]
       if (NEED(t).some(k => vars[k] === undefined || vars[k] === null || vars[k] === '')) continue
-      const out = withContext(t, fill(t, vars), vars)
+      const out = withContext(t, fill(t, vars), vars).replace(/(\d:\d\d)(?=[\u4e00-\u9fff])/g, '$1 ')   // 「2:05 开工」，钟点后面空一格
       if (width(out) <= MAX_WIDTH && !/「[^」]*「/.test(out)) return out
     }
   }

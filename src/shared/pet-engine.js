@@ -1,5 +1,6 @@
 import { LINES } from './lines.js'
 import { CHAT, MOOD_ANIM, ANIM_MOOD } from './chat.js'
+import { IDLE } from './idle.js'
 /**
  * 大肥鱼引擎：不依赖 React，dsh 浮层（Pet.jsx）和桌面窗口（desktop/）共用一份。
  *
@@ -23,6 +24,7 @@ export const MODES = [
   ['drama', '挨骂与认错', m => ['sorry', 'complain', 'caught', 'stopped'].includes(m.kind)],
   ['work', '干活与汇报', m => ['work', 'late', 'report'].includes(m.kind)],
   ['stat', '总账', m => m.kind === 'stat'],
+  ['idle', '只随便聊聊（不翻旧账）', () => false],
 ]
 
 /** 反应按钮、👍👎 的回话、想 / 催 / 生气的台词：都在 lines.js（每类十几个反应，每次随机抽两个） */
@@ -513,6 +515,13 @@ export function createPet(host, opts) {
     }
     // 蹦一下，开始想
     vy = -620; vx = 0; squash(1.12, 0.86, 90); kick()
+    // 碎碎念：「只随便聊聊」时每次都是；「随便」时大约四次里一次；别的模式不说
+    const pr0 = opts.prefs.get()
+    const idleOdds = pr0.mode === 'idle' ? 1 : (pr0.mode || 'all') === 'all' ? 0.25 : 0
+    if (Math.random() < idleOdds) {
+      const line = pickIdle()
+      if (line) return say({ text: line.text, tag: '碎碎念', anim: MOOD_ANIM[line.mood] || 'idle', chat: line.mood })
+    }
     const me = thinking = { nags: 0 }
     hideBubble()
     const flipping = flipStart()                  // 有翻本子的帧就翻本子，不弹「想想」气泡
@@ -543,6 +552,18 @@ export function createPet(host, opts) {
     say({ text: m.text, tag: m.sensitive.length ? tag + ' · 私事' : tag, priv: m.sensitive.length > 0, anim: m.anim, react: m })
   }
 
+
+  /** 挑一句碎碎念：只要现在这个钟点能说的（没写 hours 的随时能说），最近说过的 60 句先不重复 */
+  const idleSeen = []
+  function pickIdle() {
+    const h = new Date().getHours()
+    const fits = l => !l.hours || (l.hours[0] <= l.hours[1] ? h >= l.hours[0] && h < l.hours[1] : h >= l.hours[0] || h < l.hours[1])
+    const pool = IDLE.filter(fits)
+    const fresh = pool.filter(l => !idleSeen.includes(l.text))
+    const line = pick(fresh.length ? fresh : pool)
+    if (line) { idleSeen.push(line.text); if (idleSeen.length > 60) idleSeen.shift() }
+    return line
+  }
 
   // ---------- 菜单 ----------
   let menu = null, folded = null
