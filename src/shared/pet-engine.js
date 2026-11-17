@@ -69,7 +69,8 @@ export const POSE_FALLBACK = {
   dangle: 'surprised', land: 'surprised', sit: 'normal', sleep: 'sleepy', sulk: 'pout', wave: 'happy',
 }
 export const POSES = Object.keys(POSE_FALLBACK)
-export const FIGURES = ['normal', 'blink', 'happy', 'sad', 'surprised', 'sleepy', 'shy', 'thinking', 'eat', 'pout', 'proud', ...POSES, 'walk-1', 'walk-2', 'walk-3', 'walk-4', 'flip-1', 'flip-2', 'flip-3', 'flip-4', 'flip-5', 'flip-6']
+const LINGER = { short: 0.45, normal: 1, long: 1.7 }
+export const FIGURES = ['normal', 'blink', 'happy', 'sad', 'surprised', 'sleepy', 'shy', 'thinking', 'eat', 'pout', 'proud', ...POSES, 'head', 'walk-1', 'walk-2', 'walk-3', 'walk-4', 'flip-1', 'flip-2', 'flip-3', 'flip-4', 'flip-5', 'flip-6']
 
 const CSS = `
 .fy-root { position: absolute; inset: 0; pointer-events: none; overflow: hidden; font-family: "XBB Rounded", -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; }
@@ -147,7 +148,14 @@ const CSS = `
 .fy-menu button.on { color: #2f5bea; font-weight: 600; }
 .fy-menu hr { border: 0; height: 1px; background: rgba(0,0,0,.1); margin: 4px 6px; }
 .fy-menu p { margin: 4px 8px 6px; font-size: 11px; color: #8a8175; line-height: 1.5; }
-.fy-dot { position: absolute; pointer-events: auto; width: 40px; height: 40px; border-radius: 50%; border: 2px solid #2a241d; background: #fffdf8; box-shadow: 2px 3px 0 rgba(42,36,29,.9); font-size: 20px; cursor: pointer; }
+.fy-dot { position: absolute; pointer-events: auto; width: 56px; height: 56px; padding: 0; border-radius: 50% !important; min-width: 0; min-height: 0; border: 2px solid #2a241d; background: #dfeaff; box-shadow: 2px 3px 0 rgba(42,36,29,.9); font-size: 18px; cursor: pointer; overflow: hidden; transition: transform .15s; animation: fy-peek 3.2s ease-in-out infinite; }
+.fy-dot { corner-shape: round !important; box-sizing: border-box !important; width: 56px !important; height: 56px !important; max-width: none !important; aspect-ratio: 1 / 1; line-height: 0; }
+.fy-dot img { width: 100% !important; height: 100% !important; max-width: none !important; border-radius: 50%; object-fit: cover; display: block; pointer-events: none; }
+.fy-dot:hover { transform: scale(1.08) rotate(-4deg); }
+@keyframes fy-peek { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-3px) } }
+.fy-bubble > .fy-text, .fy-bubble > .fy-tag { margin-right: 16px; }
+.fy-x { position: absolute; top: 4px; right: 6px; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: inherit; opacity: .45; font-size: 14px; line-height: 20px; cursor: pointer; }
+.fy-x:hover { opacity: 1; background: rgba(127,127,127,.18); }
 @keyframes fy-pop { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: scale(1); } }
 @keyframes fy-out { to { opacity: 0; transform: scale(.85); } }
 @media (prefers-color-scheme: dark) {
@@ -310,7 +318,7 @@ export function createPet(host, opts) {
       const hit = vy
       if (hit > 260) {
         vy = -hit * BOUNCE; vx *= FRICTION; squash(1.18, 0.8)
-        if (flung) { flung = false; const l = landLine(flingSpeed); say({ text: l.text, anim: 'land', rate: l.rate }) }
+        if (flung) { flung = false; const l = landLine(flingSpeed); say({ text: l.text, anim: 'land', auto: true, rate: l.rate }) }
         else if (!bubble && (expr === 'normal' || expr === 'land')) setExpr('land', 700)
       } else if (flung && onFloor) flung = false
       else { vy = 0; vx *= 0.8 }
@@ -376,7 +384,7 @@ export function createPet(host, opts) {
     const fast = Math.hypot(vx, vy) > 700
     flingSpeed = Math.hypot(vx, vy)
     flung = fast || y < floor() - 120                                  // 甩出去 / 从高处松手：落地时说一句
-    if (fast) say({ text: pickLine(LINES.fling), anim: 'drag', rate: '被甩' })
+    if (fast) say({ text: pickLine(LINES.fling), anim: 'drag', auto: true, rate: '被甩' })
     else if (bubble && talk?.full && talk.line?.rate && !bubble.querySelector('.fy-rate')) {   // 慢慢放下：拎着时说的那句留着，补上 👍 👎
       addRate(bubble, talk.line.rate, talk.line.text)
       clearTimeout(talk.timer); talk.timer = setTimeout(() => { hideBubble(); idle() }, 6000)
@@ -397,8 +405,8 @@ export function createPet(host, opts) {
     if (!d.moved) {
       d.moved = true; pet.classList.add('drag'); thinking = null; flipStop(); closeMenu()
       ctx.before = Date.now() < sulkUntil ? 'sulk' : walking ? 'walk' : expr === 'sleep' || expr === 'sit' ? expr : bubble && talk?.line?.react ? 'talk' : null
-      const pl = pickUpLine(); say({ text: pl.text, anim: 'drag', rate: pl.rate })                     // 被拎起来要说一句；拎久了每 4 秒再抱怨一句
-      clearInterval(dragTalk); const me = d; const iv = dragTalk = setInterval(() => { if (dragging === me) say({ text: pickLine(LINES.dragLong), anim: 'drag', rate: '拎太久' }); else clearInterval(iv) }, 4000)   // 只认这一次拖
+      const pl = pickUpLine(); say({ text: pl.text, anim: 'drag', auto: true, rate: pl.rate })                     // 被拎起来要说一句；拎久了每 4 秒再抱怨一句
+      clearInterval(dragTalk); const me = d; const iv = dragTalk = setInterval(() => { if (dragging === me) say({ text: pickLine(LINES.dragLong), anim: 'drag', auto: true, rate: '拎太久' }); else clearInterval(iv) }, 4000)   // 只认这一次拖
     }
     d.hist.push([e.clientX, e.clientY, performance.now()]); if (d.hist.length > 8) d.hist.shift()
     const [ax, , at] = d.hist[0]
@@ -506,6 +514,7 @@ export function createPet(host, opts) {
    *   react：传了（一个时刻）就在最后一拍说完后，底下出 👍 👎 和两个按这一类写好的反应。
    */
   function say(line) {
+    if (line.auto && opts.prefs.get().quiet) { if (line.anim) playAnim(line.anim); return }            // 安静模式：她自己冒出来的话（拖、甩、落地）不说，点她照样说
     hideBubble()
     thinking = null
     const rs = rounds(line.text), parts = rs.map(r => r.text)
@@ -543,14 +552,19 @@ export function createPet(host, opts) {
       if (isLast && line.rate && !dragging) addRate(b, line.rate, line.text)
       if (isLast && line.react) addReactions(b, line.react)
       else if (isLast && line.chat) addChat(b, line.chat)
-      const read = Math.max(isLast ? (line.react || line.chat ? 9000 : line.rate ? 6000 : 3500) : 700, [...parts[t.i]].length * (isLast ? 110 : 40))
+      const k = LINGER[opts.prefs.get().linger] || 1           // 气泡停多久：短 0.45 / 默认 1 / 长 1.7
+      const read = k * Math.max(isLast ? (line.react || line.chat ? 9000 : line.rate ? 6000 : 3500) : 700, [...parts[t.i]].length * (isLast ? 110 : 40))
       t.timer = setTimeout(() => { if (isLast) { hideBubble(); idle() } else { t.i++; startBeat() } }, read)
     }
     // 鼠标停在气泡上就别收（在犹豫点哪个反应）
     b.addEventListener('pointerenter', () => { if (talk === t && t.full && t.i === parts.length - 1) clearTimeout(t.timer) })
     b.addEventListener('pointerleave', () => { if (talk === t && t.full && t.i === parts.length - 1) { clearTimeout(t.timer); t.timer = setTimeout(hideBubble, 2500) } })
+    const x0 = doc.createElement('button'); x0.className = 'fy-x'; x0.textContent = '✕'; x0.title = '收起气泡（也可以右键气泡、按 Esc）'
+    x0.addEventListener('pointerdown', e => { e.stopPropagation(); hideBubble(); idle() }); b.appendChild(x0)
+    b.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); hideBubble(); idle() })
     b.addEventListener('pointerdown', e => {
       e.stopPropagation()
+      if (e.button === 2) return
       if (talk !== t) return
       if (!t.full) return t.finish()
       clearTimeout(t.timer)
@@ -742,6 +756,10 @@ export function createPet(host, opts) {
     item((pr.priv === false ? '☐' : '☑') + ' 藏起私事（健康、感情、成绩、家庭）', false, () => { opts.prefs.set({ priv: pr.priv === false }) })
     item('重新翻记录', false, () => { say({ text: '本肥鱼重新翻一遍记录……', anim: 'file' }); load(true).then(d => d && say({ text: `翻完了：${d.moments.length} 件事可以说。`, anim: 'cheer' })) })
     for (const x of opts.menuExtras?.() || []) item(x.label, false, x.onClick)
+    m.appendChild(doc.createElement('hr'))
+    const hl = doc.createElement('h6'); hl.textContent = '气泡停多久'; m.appendChild(hl)
+    for (const [k, label] of [['short', '短'], ['normal', '默认'], ['long', '长']]) item(((pr.linger || 'normal') === k ? '● ' : '○ ') + label, (pr.linger || 'normal') === k, () => opts.prefs.set({ linger: k }))
+    item((pr.quiet ? '☑' : '☐') + ' 安静一点（拖她、甩她不说话，点她照样说）', false, () => opts.prefs.set({ quiet: !pr.quiet }))
     item('先收起来', false, fold)
     m.appendChild(doc.createElement('hr'))
     const p = doc.createElement('p'); p.textContent = (opts.note?.(data) || '') + '都在本机算，不调模型。一碗白饭 = 5 万 token。'; m.appendChild(p)
@@ -750,13 +768,19 @@ export function createPet(host, opts) {
     m.addEventListener('pointerdown', e => e.stopPropagation())
     menu = m
   }
-  const onDocDown = e => { if (menu && !menu.contains(e.target)) closeMenu() }
+  const onDocDown = e => {
+    if (menu && !menu.contains(e.target)) closeMenu()
+    if (bubble && !bubble.contains(e.target) && !pet.contains(e.target) && !thinking) { hideBubble(); idle() }   // 点别处 = 收起气泡
+  }
+  const onKey = e => { if (e.key === 'Escape' && (bubble || menu)) { closeMenu(); hideBubble(); idle() } }
+  doc.addEventListener('keydown', onKey)
   doc.addEventListener('pointerdown', onDocDown, true)
 
   function fold() {
     hideBubble(); pet.style.display = 'none'
-    folded = doc.createElement('button'); folded.className = 'fy-dot'; folded.textContent = '🐳'; folded.title = '把小本本叫回来'
-    folded.style.left = clamp(x + SW - 44, 0, W() - 40) + 'px'; folded.style.top = clamp(y + size - 44, 0, H() - 40) + 'px'
+    folded = doc.createElement('button'); folded.className = 'fy-dot'; folded.title = '把小本本叫回来'
+    if (srcs.head) { const i = doc.createElement('img'); i.src = srcs.head; i.alt = ''; i.draggable = false; folded.appendChild(i) } else folded.textContent = '本'
+    folded.style.left = clamp(x + SW - 64, 0, W() - 60) + 'px'; folded.style.top = clamp(y + size - 64, 0, H() - 60) + 'px'
     folded.onclick = () => { folded.remove(); folded = null; pet.style.display = ''; opts.prefs.set({ folded: false }); idle() }
     root.appendChild(folded); opts.prefs.set({ folded: true })
   }
@@ -807,7 +831,7 @@ export function createPet(host, opts) {
   return {
     say, poke, debug,
     destroy() {
-      cancelAnimationFrame(raf); clearInterval(dragTalk); clearTimeout(fbTimer); Promise.resolve(opts.feedback?.save?.(fb)).catch(() => {}); cancelAnimationFrame(walkRaf); clearTimeout(walkTimer); walking = null; clearInterval(restTimer); clearTimeout(blinkTimer); clearTimeout(exprTimer); clearTimeout(flipTimer); hideBubble(); closeMenu(); win.removeEventListener('resize', onResize); doc.removeEventListener('pointerdown', onDocDown, true); root.remove()
+      cancelAnimationFrame(raf); clearInterval(dragTalk); clearTimeout(fbTimer); Promise.resolve(opts.feedback?.save?.(fb)).catch(() => {}); cancelAnimationFrame(walkRaf); clearTimeout(walkTimer); walking = null; clearInterval(restTimer); clearTimeout(blinkTimer); clearTimeout(exprTimer); clearTimeout(flipTimer); hideBubble(); closeMenu(); win.removeEventListener('resize', onResize); doc.removeEventListener('pointerdown', onDocDown, true); doc.removeEventListener('keydown', onKey); root.remove()
     },
   }
 }

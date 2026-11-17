@@ -191,6 +191,12 @@ function DebugSection() {
         <h3 style={{ margin: '14px 0 6px', fontSize: 14 }}>开关</h3>
         <label className="ay-small" style={{ display: 'block' }}><input type="checkbox" checked={pr.walk !== false} onChange={e => setPref({ walk: e.target.checked })} /> 闲着时自己散步</label>
         <label className="ay-small" style={{ display: 'block' }}><input type="checkbox" checked={pr.rest !== false} onChange={e => setPref({ rest: e.target.checked })} /> 没人理时坐下、再久点趴着睡</label>
+        <label className="ay-small" style={{ display: 'block' }}><input type="checkbox" checked={!!pr.quiet} onChange={e => setPref({ quiet: e.target.checked })} /> 安静一点（拖她、甩她不说话，点她照样说）</label>
+        <label className="ay-small" style={{ display: 'block' }}>气泡停多久{' '}
+          <select value={pr.linger || 'normal'} onChange={e => setPref({ linger: e.target.value })}>
+            {[['short', '短（一半不到）'], ['normal', '默认'], ['long', '长']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        </label>
         <label className="ay-small" style={{ display: 'block' }}>「随便」模式里碎碎念占{' '}
           <select value={String(typeof pr.idleOdds === 'number' ? pr.idleOdds : 0.25)} onChange={e => setPref({ idleOdds: Number(e.target.value) })}>
             {[['0', '不说'], ['0.25', '四次里一次（默认）'], ['0.5', '一半'], ['1', '每次都是']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
