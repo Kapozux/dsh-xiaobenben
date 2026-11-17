@@ -4,9 +4,11 @@
 |---|---|---|
 | `turnaround.png` | 三视图原画（正面 / 侧面 / 背面，透明背景） | Kapozux，用 ChatGPT 的图像生成绘制 |
 | `flip-sheet.png` | 翻本子的 6 帧原画（一张横排） | 同上 |
-| `flip-1.png` … `flip-6.png` | 从 `flip-sheet.png` 切出的单帧，统一成 420×680、按脚底对齐 | 同上（切图、对齐：本插件） |
+| `flip-1.png` … `flip-6.png` | 从 `flip-sheet.png` 切出的单帧，统一成 480×680、按脚底对齐 | 同上（切图、对齐：本插件） |
 | `poses-1-sheet.png` | 6 个专属姿势原画（一张横排） | 同上 |
 | `write` `count` `hide` `accuse` `spout` `bow` `.png` | 从 `poses-1-sheet.png` 切出：记账、数饭碗、本子挡脸、翻本子质问、喷水欢呼、鞠躬 | 同上（切图、对齐：本插件） |
+| `poses-2-sheet.png` | 6 个桌宠动作原画（一张横排） | 同上 |
+| `dangle` `land` `sit` `sleep` `sulk` `wave` `.png` | 从 `poses-2-sheet.png` 切出：被拎起、落地、坐着翻本子、趴本子睡着、背对生闷气、挥手 | 同上（切图、对齐：本插件） |
 | `expressions-sheet.png` | 9 种表情原画（一张横排） | 同上 |
 | `happy` `sad` `surprised` `sleepy` `shy` `thinking` `eat` `pout` `proud` `.png` | 从 `expressions-sheet.png` 切出的单帧，缩放到和 `normal.png` 同样身高、按脚底对齐 | 同上（切图、对齐：本插件） |
 | `normal.png` | 平时站着的样子，就是 `flip-1.png` | 同上 |
@@ -21,5 +23,5 @@
 
 ## 想加表情图？
 
-同目录放这些名字的透明 PNG（和 `normal.png` 同尺寸 420×680、脚底贴着下边、左右居中）就会自动换上，缺哪张就用 `normal.png` 加代码画的漫画符号：
+同目录放这些名字的透明 PNG（和 `normal.png` 同尺寸 480×680、脚底贴着下边、左右居中）就会自动换上，缺哪张就用 `normal.png` 加代码画的漫画符号：
 `happy.png` `sad.png` `surprised.png` `sleepy.png` `shy.png` `thinking.png` `eat.png` `pout.png` `proud.png`。

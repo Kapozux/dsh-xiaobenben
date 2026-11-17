@@ -58,11 +58,16 @@ export function rounds(text) {
  * 都没图用 normal。表情（脸）和姿势（记账、数饭碗、本子挡脸……）混着用。
  */
 export const EXPR = {
-  idle: 'normal', work: ['write', 'thinking'], file: ['write', 'thinking'], yawn: 'sleepy', startle: 'surprised', drag: 'surprised',
-  caught: ['hide', 'shy'], bow: ['bow', 'shy'], sigh: 'sad', cheer: ['spout', 'happy'], eat: ['count', 'eat'], poke: 'happy',
-  angry: ['accuse', 'pout'], proud: 'proud',
+  idle: 'normal', work: ['write', 'thinking'], file: ['write', 'thinking'], yawn: ['sleep', 'sleepy'], startle: 'surprised', drag: 'dangle',
+  caught: ['hide', 'shy'], bow: ['bow', 'shy'], sigh: 'sad', cheer: ['spout', 'wave', 'happy'], eat: ['count', 'eat'], poke: ['wave', 'happy'],
+  angry: ['sulk', 'accuse', 'pout'], proud: 'proud',
 }
-export const POSES = ['write', 'count', 'hide', 'accuse', 'spout', 'bow']
+/** 姿势图（不是单纯换脸）；没这张图时退回哪个表情 */
+export const POSE_FALLBACK = {
+  write: 'thinking', count: 'eat', hide: 'shy', accuse: 'pout', spout: 'happy', bow: 'shy',
+  dangle: 'surprised', land: 'surprised', sit: 'normal', sleep: 'sleepy', sulk: 'pout', wave: 'happy',
+}
+export const POSES = Object.keys(POSE_FALLBACK)
 export const FIGURES = ['normal', 'blink', 'happy', 'sad', 'surprised', 'sleepy', 'shy', 'thinking', 'eat', 'pout', 'proud', ...POSES, 'flip-1', 'flip-2', 'flip-3', 'flip-4', 'flip-5', 'flip-6']
 
 const CSS = `
@@ -202,7 +207,7 @@ export function createPet(host, opts) {
   fig.append(img, mark); float.appendChild(fig); body.appendChild(float)
   const MARK = { happy: '♪', surprised: '！', sleepy: 'z', shy: '///', sad: '💧', thinking: '…', eat: '♪', pout: '💢', proud: '✦' }
   const srcs = {}                              // 名字 → 地址（null = 没这张图）
-  let expr = 'normal', exprTimer = 0
+  let expr = 'normal', exprTimer = 0, lastActive = Date.now()
   const ready = Promise.all(FIGURES.map(n => Promise.resolve(opts.figureSrc(n)).catch(() => null).then(u => { srcs[n] = u })))
   const srcOf = n => srcs[n] || srcs.normal
   // 没有备用形象：立绘取不到就不显示（隔 5 秒再取一次），绝不画别的东西顶上
@@ -210,7 +215,9 @@ export function createPet(host, opts) {
   /** 换表情：有这张表情图就换图；没有就用 normal 图 + 代码画的漫画符号和动作。ms 后回到 normal（0 = 保持到下次换） */
   function setExpr(name, ms = 0) {
     clearTimeout(exprTimer)
-    expr = name in MARK || name === 'normal' || (POSES.includes(name) && srcs[name]) ? name : 'normal'
+    if (POSES.includes(name) && !srcs[name]) name = POSE_FALLBACK[name]
+    expr = name in MARK || name === 'normal' || POSES.includes(name) ? name : 'normal'
+    lastActive = Date.now()
     float.className = 'fy-float' + (expr !== 'normal' && !srcs[expr] ? ' fy-e-' + expr : '')
     mark.textContent = expr === 'shy' ? '' : MARK[expr] || ''
     show(expr)
@@ -223,6 +230,13 @@ export function createPet(host, opts) {
     setExpr(have.length ? have[Math.floor(Math.random() * have.length)] : e.at(-1), ms)
   }
   const idle = () => setExpr('normal')
+  // 没人理她：3 分钟坐下翻本子，10 分钟（半夜 3 分钟）趴在本子上睡着。戳她 / 拖她就醒
+  const restTimer = setInterval(() => {
+    if (dragging || bubble || thinking || !(expr === 'normal' || expr === 'sit')) return
+    const quiet = Date.now() - lastActive, h = new Date().getHours()
+    const want = quiet > (h < 6 ? 3 : 10) * 60e3 ? 'sleep' : quiet > 3 * 60e3 ? 'sit' : null
+    if (want && want !== expr && srcs[want]) { const keep = lastActive; setExpr(want); lastActive = keep }
+  }, 20e3)
   // 眨眼：只在 normal 时眨，每 2.5～6 秒一次，偶尔连眨两下
   let blinkTimer = 0
   function blink() {
@@ -242,7 +256,7 @@ export function createPet(host, opts) {
     show(expr)
   }
   let figTimer = 0
-  ready.then(() => { if (srcs.normal) { pet.style.visibility = ''; show(expr) } else loadFigures(); blink() })
+  ready.then(() => { if (srcs.normal) { pet.style.visibility = ''; show(expr); if (srcs.wave) setExpr('wave', 1600) } else loadFigures(); blink() })
 
   // 翻本子：点了之后先翻（2→3→4→5，记录没读完就在 4、5 之间来回翻），翻到了停在第 6 帧「看到了」
   let flipTimer = 0
@@ -291,7 +305,7 @@ export function createPet(host, opts) {
     if (y >= floor() && vy >= 0) {
       y = floor()
       const hit = vy
-      if (hit > 260) { vy = -hit * BOUNCE; vx *= FRICTION; squash(1.18, 0.8) }
+      if (hit > 260) { vy = -hit * BOUNCE; vx *= FRICTION; squash(1.18, 0.8); if (!bubble && (expr === 'normal' || expr === 'land')) setExpr('land', 700) }
       else { vy = 0; vx *= 0.8 }
     }
     onFloor = y >= floor() && Math.abs(vy) < 1
@@ -618,7 +632,7 @@ export function createPet(host, opts) {
   return {
     say, poke,
     destroy() {
-      cancelAnimationFrame(raf); clearTimeout(blinkTimer); clearTimeout(exprTimer); clearTimeout(flipTimer); hideBubble(); closeMenu(); win.removeEventListener('resize', onResize); doc.removeEventListener('pointerdown', onDocDown, true); root.remove()
+      cancelAnimationFrame(raf); clearInterval(restTimer); clearTimeout(blinkTimer); clearTimeout(exprTimer); clearTimeout(flipTimer); hideBubble(); closeMenu(); win.removeEventListener('resize', onResize); doc.removeEventListener('pointerdown', onDocDown, true); root.remove()
     },
   }
 }
