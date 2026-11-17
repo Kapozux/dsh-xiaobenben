@@ -1,5 +1,5 @@
 /**
- * 「时刻」：从会话记录里挑出值得大肥鱼说一句的事，套本鱼的口吻写成台词。确定性，不调模型。
+ * 「时刻」：从会话记录里挑出值得大肥鱼说一句的事，套本肥鱼的口吻写成台词。确定性，不调模型。
  *
  * 两步：
  *   1. 把会话切成「轮」（主人说一句 → agent 埋头干 → 下一句主人的话为止），数出干了多久、改了几个文件、跑了几条命令、吃了多少 token。
@@ -20,7 +20,7 @@ const SORRY = /(你说得对|你是对的|是我的错|我的错|我搞错了|�
 const ASK = /(帮我|给我|你(去|来|先|把|再|直接)|修|改|加|写|做|弄|查|跑|删|换|整理|实现|接入|装|看看|试试|重构|优化|导出)/
 const DONE = /(改好了|修好了|已修复|已经修好|搞定|都过了|全过了|全部通过|已完成|没问题了|好了。|fixed|all tests pass)/i
 
-/** 一段空闲最多算 3 分钟：等主人点批准、去吃饭，不算本鱼在干活。 */
+/** 一段空闲最多算 3 分钟：等主人点批准、去吃饭，不算本肥鱼在干活。 */
 const IDLE_CAP = 180e3
 /** 一碗白饭 = 5 万 token（输入 + 输出 + 缓存写入；缓存读取不算）。换算着玩的，界面上写明。 */
 export const RICE = 50_000
@@ -186,7 +186,7 @@ const CAP = { work: 400, late: 150, report: 200, sorry: 150, complain: 150, caug
 
 /**
  * @param {ReturnType<typeof newTurn>[]} turns
- * @param {{ since?: number, now?: number, days?: number, me?: string }} [opts]  me：本鱼的自称（默认「本鱼」）
+ * @param {{ since?: number, now?: number, days?: number, me?: string }} [opts]  me：本肥鱼的自称（默认「本肥鱼」）
  * @returns {{ kind: string, ts: number, day: string, hour: number, text: string, anim: string, sensitive: string[], agent?: string }[]}
  */
 export function buildMoments(turns, { since = 0, now = Date.now(), days = null } = {}) {
@@ -207,19 +207,19 @@ export function buildMoments(turns, { since = 0, now = Date.now(), days = null }
     if (tk && tr.active >= 5 * 60e3 && !tr.interrupted) {
       const late = new Date(tr.start).getHours() < 5
       add(late ? 'late' : 'work', tr.start, pick(late ? [
-        `${w}，主人还不睡，让本鱼${tk}。本鱼打着哈欠干了 ${dur(tr.active)}${doing}。夜宵是${bowls(tr.tokens)}白饭。`,
-        `${w}。全世界都睡了，只有主人和本鱼在搞${tk}。${dur(tr.active)}，${bowls(tr.tokens).trim()}白饭，本鱼要加班费。`,
+        `${w}，主人还不睡，让本肥鱼${tk}。本肥鱼打着哈欠干了 ${dur(tr.active)}${doing}。夜宵是${bowls(tr.tokens)}白饭。`,
+        `${w}。全世界都睡了，只有主人和本肥鱼在搞${tk}。${dur(tr.active)}，${bowls(tr.tokens).trim()}白饭，本肥鱼要加班费。`,
       ] : [
-        `${w}，主人让本鱼${tk}。本鱼嘿咻嘿咻忙了 ${dur(tr.active)}${doing}，吃掉${bowls(tr.tokens)}白饭。`,
-        `${w}，${tk}。本鱼埋头 ${dur(tr.active)}${doing}。主人请客的${bowls(tr.tokens)}白饭，本鱼吃得心安理得。`,
-        `${w}，本鱼替主人搞${tk}，一口气 ${dur(tr.active)}${doing}，吃了${bowls(tr.tokens)}白饭。主人那会儿在干嘛？本鱼不知道，本鱼只管吃。`,
+        `${w}，主人让本肥鱼${tk}。本肥鱼嘿咻嘿咻忙了 ${dur(tr.active)}${doing}，吃掉${bowls(tr.tokens)}白饭。`,
+        `${w}，${tk}。本肥鱼埋头 ${dur(tr.active)}${doing}。主人请客的${bowls(tr.tokens)}白饭，本肥鱼吃得心安理得。`,
+        `${w}，本肥鱼替主人搞${tk}，一口气 ${dur(tr.active)}${doing}，吃了${bowls(tr.tokens)}白饭。主人那会儿在干嘛？本肥鱼不知道，本肥鱼只管吃。`,
       ], seed), late ? 'yawn' : 'work', src)
     }
 
     if (tr.interrupted && tr.active >= 60e3 && isHuman(tr.next) && !FILLER.test(tr.next.trim()) && len(tr.next) >= 3 && len(tr.next) <= 40) {
       add('stopped', tr.end, pick([
-        `${w}，本鱼刚吭哧吭哧干了 ${dur(tr.active)}，主人一把按住：「${short(tr.next, 30)}」。好的好的，本鱼停手。`,
-        `本鱼正干得起劲（${dur(tr.active)}了），主人喊停：「${short(tr.next, 30)}」。……白饭先放下。`,
+        `${w}，本肥鱼刚吭哧吭哧干了 ${dur(tr.active)}，主人一把按住：「${short(tr.next, 30)}」。好的好的，本肥鱼停手。`,
+        `本肥鱼正干得起劲（${dur(tr.active)}了），主人喊停：「${short(tr.next, 30)}」。……白饭先放下。`,
       ], seed), 'startle', tr.next)
     }
 
@@ -227,17 +227,17 @@ export function buildMoments(turns, { since = 0, now = Date.now(), days = null }
     const claim = sentenceWith(lastText, DONE, 30)
     if (claim && isHuman(tr.next) && COMPLAIN.test(tr.next) && len(tr.next) <= 40) {
       add('caught', tr.start, pick([
-        `${w}，本鱼说「${claim}」。主人下一句：「${short(tr.next, 30)}」。……本鱼先去吃个饭冷静一下。`,
-        `本鱼：「${claim}」\n主人：「${short(tr.next, 30)}」\n本鱼：（默默放下饭碗）`,
+        `${w}，本肥鱼说「${claim}」。主人下一句：「${short(tr.next, 30)}」。……本肥鱼先去吃个饭冷静一下。`,
+        `本肥鱼：「${claim}」\n主人：「${short(tr.next, 30)}」\n本肥鱼：（默默放下饭碗）`,
       ], seed), 'caught', claim + ' ' + tr.next)
     }
 
     const first = tr.text.split('\n')[0].trim()
     if (COMPLAIN.test(first) && len(first) <= 40 && !claim) {
       add('complain', tr.start, pick([
-        `${w}，主人说「${short(first, 30)}」。本鱼表示理解，嘿咻……这就改。`,
-        `「${short(first, 30)}」——主人 ${w}。本鱼听到了，本鱼在改了，别凶。`,
-        `${w}，主人发火：「${short(first, 30)}」。本鱼缩了缩尾巴，默默打开文件。`,
+        `${w}，主人说「${short(first, 30)}」。本肥鱼表示理解，嘿咻……这就改。`,
+        `「${short(first, 30)}」——主人 ${w}。本肥鱼听到了，本肥鱼在改了，别凶。`,
+        `${w}，主人发火：「${short(first, 30)}」。本肥鱼缩了缩尾巴，默默打开文件。`,
       ], seed), 'sigh', first)
     }
 
@@ -245,9 +245,9 @@ export function buildMoments(turns, { since = 0, now = Date.now(), days = null }
       const s = sentenceWith(tx, SORRY, 40)
       if (!s) continue
       add('sorry', tr.start, pick([
-        `${w}，本鱼承认：「${s}」。本鱼知道错了，不是故意的。`,
-        `「${s}」——本鱼，${w}。（行礼）下次一定先看清楚再动手。`,
-        `本鱼认错现场（${w}）：「${s}」。罚本鱼少吃一碗白饭。`,
+        `${w}，本肥鱼承认：「${s}」。本肥鱼知道错了，不是故意的。`,
+        `「${s}」——本肥鱼，${w}。（行礼）下次一定先看清楚再动手。`,
+        `本肥鱼认错现场（${w}）：「${s}」。罚本肥鱼少吃一碗白饭。`,
       ], seed + s), 'bow', s)
       break
     }
@@ -256,8 +256,8 @@ export function buildMoments(turns, { since = 0, now = Date.now(), days = null }
       const s = sentenceWith(lastText, /./, 40)
       if (s && !SORRY.test(s)) {
         add('report', tr.end, pick([
-          `忙完 ${dur(tr.active)}，本鱼最后跟主人汇报：「${s}」`,
-          `${when(tr.end)}，本鱼交差：「${s}」。白饭呢？`,
+          `忙完 ${dur(tr.active)}，本肥鱼最后跟主人汇报：「${s}」`,
+          `${when(tr.end)}，本肥鱼交差：「${s}」。白饭呢？`,
         ], seed + 'r'), 'cheer', s)
       }
     }
@@ -267,7 +267,7 @@ export function buildMoments(turns, { since = 0, now = Date.now(), days = null }
   const span = days ? `这 ${days} 天` : '这段时间'
   const fillers = real.filter(t => FILLER.test(t.text.split('\n')[0].trim()) && /继续|continue|接着/i.test(t.text))
   if (fillers.length >= 5) {
-    add('stat', fillers.at(-1).start, `${span}，主人一共喊了 ${fillers.length} 次「继续」。本鱼就因此多干了 ${dur(fillers.reduce((a, t) => a + t.active, 0))}。白饭照吃，一粒不少。`, 'eat')
+    add('stat', fillers.at(-1).start, `${span}，主人一共喊了 ${fillers.length} 次「继续」。本肥鱼就因此多干了 ${dur(fillers.reduce((a, t) => a + t.active, 0))}。白饭照吃，一粒不少。`, 'eat')
   }
   const byProject = {}
   for (const t of real) {
@@ -278,16 +278,16 @@ export function buildMoments(turns, { since = 0, now = Date.now(), days = null }
   for (const [p, v] of Object.entries(byProject)) {
     if (v.ms < 60 * 60e3) continue
     add('stat', now, pick([
-      `在 ${p} 里，本鱼陪主人干了 ${dur(v.ms)}，${v.days.size} 天，改过 ${v.files.size} 个文件，吃了${bowls(v.tok)}白饭。`,
-      `${p}：${v.days.size} 天、${dur(v.ms)}、${bowls(v.tok).trim()}白饭。本鱼对这个文件夹有感情了。`,
+      `在 ${p} 里，本肥鱼陪主人干了 ${dur(v.ms)}，${v.days.size} 天，改过 ${v.files.size} 个文件，吃了${bowls(v.tok)}白饭。`,
+      `${p}：${v.days.size} 天、${dur(v.ms)}、${bowls(v.tok).trim()}白饭。本肥鱼对这个文件夹有感情了。`,
     ], p), 'file')
   }
   const longest = [...real].sort((a, b) => b.active - a.active)[0]
-  if (longest && task(longest)) add('stat', longest.start, `最久的一次：${when(longest.start)}，${task(longest)}，本鱼连着干了 ${dur(longest.active)}，吃掉${bowls(longest.tokens)}白饭。那天本鱼累瘫了。`, 'eat', longest.text)
+  if (longest && task(longest)) add('stat', longest.start, `最久的一次：${when(longest.start)}，${task(longest)}，本肥鱼连着干了 ${dur(longest.active)}，吃掉${bowls(longest.tokens)}白饭。那天本肥鱼累瘫了。`, 'eat', longest.text)
   const perDay = {}
   for (const t of real) perDay[dayKey(t.start)] = (perDay[dayKey(t.start)] || 0) + t.active
   const busiest = Object.entries(perDay).sort((a, b) => b[1] - a[1])[0]
-  if (busiest && busiest[1] >= 30 * 60e3) add('stat', new Date(busiest[0] + 'T12:00').getTime(), `${+busiest[0].slice(5, 7)} 月 ${+busiest[0].slice(8)} 日是本鱼最累的一天：主人派的活加起来 ${dur(busiest[1])}。本鱼那天吃了好多饭。`, 'eat')
+  if (busiest && busiest[1] >= 30 * 60e3) add('stat', new Date(busiest[0] + 'T12:00').getTime(), `${+busiest[0].slice(5, 7)} 月 ${+busiest[0].slice(8)} 日是本肥鱼最累的一天：主人派的活加起来 ${dur(busiest[1])}。本肥鱼那天吃了好多饭。`, 'eat')
 
   const seen = new Set()
   const capped = {}

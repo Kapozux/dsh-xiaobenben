@@ -18,7 +18,7 @@ const engine = createPet(document.getElementById('host'), {
   animSrc: k => { if (!seen.has(k)) seen.set(k, fetch('anim/' + k, { method: 'HEAD' }).then(r => r.ok ? 'anim/' + k : null).catch(() => null)); return seen.get(k) },
   loadMoments: load,
   onPointerArea: inside => window.fy.hover(inside),
-  note: d => d ? `最近 ${d.days} 天 · ${d.moments.length} 句（dsh 每 10 分钟帮本鱼重翻一次）。` : '',
+  note: d => d ? `最近 ${d.days} 天 · ${d.moments.length} 句（dsh 每 10 分钟帮本肥鱼重翻一次）。` : '',
   menuExtras: () => [{ label: '回到 dsh 网页里', onClick: () => window.fy.quit() }],
 })
 window.__fy = engine

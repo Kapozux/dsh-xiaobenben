@@ -20,6 +20,24 @@ export const MODES = [
   ['stat', '总账', m => m.kind === 'stat'],
 ]
 
+/** 说完后的两个专属反应：[按钮字, 大肥鱼的回话（数组随机挑一句；null = 直接再说一件）, 动画] */
+const REACT = {
+  work: [['辛苦了', ['嘿嘿，被夸了。本肥鱼再吃一碗白饭庆祝一下。', '不辛苦不辛苦，有白饭就不辛苦。'], 'cheer'], ['就这？', ['……本肥鱼下次多干一会儿就是了。', '主人好严格，本肥鱼记住了。'], 'sigh']],
+  late: [['早点睡', ['主人先睡！本肥鱼收拾完也睡。', '好哦，那下次十二点前喊本肥鱼干活。'], 'yawn'], ['再来一个', null]],
+  report: [['干得好', ['嘿咻！本肥鱼就知道主人识货。', '那……能多给一碗白饭吗？'], 'cheer'], ['真的假的', ['真的！……大部分是真的。', '主人自己去看嘛，本肥鱼没骗人（小声）'], 'sigh']],
+  sorry: [['原谅你了', ['谢谢主人！本肥鱼以后一定……尽量不犯。', '呜，主人真好。'], 'bow'], ['还敢？', ['不敢了不敢了！（缩成一团）', '本肥鱼发誓！……下次换个错犯。'], 'startle']],
+  complain: [['我当时太凶了', ['没事，本肥鱼皮厚（肉也厚）。', '本肥鱼不记仇，本肥鱼只记白饭。'], 'bow'], ['你活该', ['……好吧，确实活该。', '哼，本肥鱼也是会委屈的。'], 'sigh']],
+  caught: [['抓到你了', ['本肥鱼不是故意的！测试它自己挂的！', '嘘……别告诉别人。'], 'caught'], ['下次先测', ['好的好的，本肥鱼先测再说。', '记住了，先测试，再吹牛。'], 'bow']],
+  stopped: [['我错怪你了', ['没事没事，本肥鱼停得可快了。', '那本肥鱼接着干？'], 'poke'], ['停得好', ['……本肥鱼也觉得那会儿有点上头。', '好吧，主人说停就停。'], 'sigh']],
+  stat: [['这么多？', ['对呀，本肥鱼可是很能干（吃）的。', '数字不会骗人，白饭也不会。'], 'eat'], ['再来一个', null]],
+}
+const REPLY = {
+  up: ['本肥鱼看来说的挺有道理，谢谢主人对我的鼓励！', '嘿咻！被主人夸了，本肥鱼今天多吃一碗白饭。', '主人懂本肥鱼！这种本肥鱼以后多说点。'],
+  down: ['呜呜呜主人，你不能这么说我', '呜……本肥鱼说错话了吗，本肥鱼去角落反省一下。', '哼，不好笑就不好笑嘛，本肥鱼换一件说。'],
+  angry: ['别一直点！本肥鱼要晕了！', '再点本肥鱼就要咬人了！（真的会咬）', '停停停！本肥鱼脑子要被戳散了！'],
+  sulk: ['哼。', '本肥鱼在生气，等一下再戳。', '……不理你。'],
+}
+
 const G = 2600            // 重力 px/s²
 const BOUNCE = 0.5        // 撞墙 / 落地留下的速度
 const FRICTION = 0.86     // 落地后横向每次弹跳的摩擦
@@ -40,7 +58,7 @@ export function beats(text) {
     if (depth === 0 && (/[。！？!?]/.test(ch) || ch === '\n')) { if (cur.trim()) out.push(cur.trim()); cur = '' }
   }
   if (cur.trim()) out.push(cur.trim())
-  // 太短的往后并（「好的好的，本鱼停手。」这种单独成拍可以，但「……」不行）
+  // 太短的往后并（「好的好的，本肥鱼停手。」这种单独成拍可以，但「……」不行）
   const merged = []
   for (const s of out) {
     if (merged.length && ([...merged.at(-1)].length < 8 || [...s].length < 4)) merged[merged.length - 1] += s
@@ -77,6 +95,15 @@ const CSS = `
 .fy-dots { margin-top: 4px; display: flex; gap: 4px; }
 .fy-dots i { width: 5px; height: 5px; border-radius: 50%; background: #d8cfc0; }
 .fy-dots i.on { background: #2a241d; }
+.fy-think { font-weight: 500; }
+.fy-ell i { font-style: normal; display: inline-block; animation: fy-ell 1s infinite; }
+.fy-ell i:nth-child(2) { animation-delay: .15s; } .fy-ell i:nth-child(3) { animation-delay: .3s; }
+@keyframes fy-ell { 0%, 60%, 100% { transform: translateY(0); opacity: .5; } 30% { transform: translateY(-4px); opacity: 1; } }
+.fy-react { display: flex; gap: 6px; margin-top: 9px; padding-top: 8px; border-top: 1.5px dashed rgba(42,36,29,.22); flex-wrap: wrap; animation: fy-pop .2s ease-out; }
+.fy-react button { font: inherit; font-size: 12px; line-height: 1; color: inherit; background: transparent; border: 1.5px solid #2a241d; border-radius: 99px; padding: 6px 10px; cursor: pointer; transition: transform .1s; }
+.fy-react button.emo { font-size: 14px; padding: 4px 8px; }
+.fy-react button:hover { background: #2a241d; color: #fffdf8; transform: translateY(-1px); }
+.fy-react button:active { transform: scale(.92); }
 .fy-menu { position: absolute; pointer-events: auto; width: 230px; box-sizing: border-box; padding: 6px; border-radius: 14px; background: #fffdf8; color: #2a241d;
   border: 2px solid #2a241d; box-shadow: 3px 4px 0 rgba(42,36,29,.9); font-size: 13px; animation: fy-pop .16s ease-out; }
 .fy-menu h6 { margin: 4px 8px; font-size: 11px; font-weight: 600; color: #8a8175; }
@@ -95,6 +122,9 @@ const CSS = `
   .fy-text .fy-q { color: #8ea6ff; }
   .fy-dots i { background: #4a4f5a; } .fy-dots i.on { background: #f1ece4; }
   .fy-menu h6, .fy-menu p { color: #9a948a; }
+  .fy-react { border-top-color: rgba(241,236,228,.25); }
+  .fy-react button { border-color: #f1ece4; }
+  .fy-react button:hover { background: #f1ece4; color: #262a33; }
 }
 `
 
@@ -141,7 +171,7 @@ export function createPet(host, opts) {
   // ---------- 物理 ----------
   const W = () => host.clientWidth, H = () => host.clientHeight
   const p0 = opts.prefs.get()
-  let x = p0.x ?? W() - size - 24, y = p0.y ?? H() - size   // 左上角
+  let x = p0.x >= 0 ? p0.x : W() - size - 24, y = p0.y >= 0 ? p0.y : H() - size   // 左上角
   let vx = 0, vy = 0, raf = 0, last = 0, onFloor = false
   let dragging = null
   const floor = () => H() - size
@@ -156,6 +186,7 @@ export function createPet(host, opts) {
   }
   function step(ts) {
     const dt = clamp((ts - last) / 1000, 0.004, 0.033); last = ts   // rAF 的时间戳可能早于 kick 时记的 performance.now()
+    if (!W()) { raf = 0; return }                  // 容器被藏起来了（桌面版开着时网页那只），别算，更别把 -200 存进位置
     if (dragging) { raf = requestAnimationFrame(step); return }
     vy += G * dt
     x += vx * dt; y += vy * dt
@@ -186,7 +217,7 @@ export function createPet(host, opts) {
     const d = dragging; if (!d) return
     const dx = e.clientX - d.sx, dy = e.clientY - d.sy
     if (!d.moved && Math.hypot(dx, dy) < 5) return
-    if (!d.moved) { d.moved = true; pet.classList.add('drag'); hideBubble(); closeMenu(); playAnim('drag', true) }
+    if (!d.moved) { d.moved = true; pet.classList.add('drag'); hideBubble(); thinking = null; closeMenu(); playAnim('drag', true) }
     d.hist.push([e.clientX, e.clientY, performance.now()]); if (d.hist.length > 6) d.hist.shift()
     const [ax, , at] = d.hist[0]
     const v = (e.clientX - ax) / Math.max(1, performance.now() - at) * 1000
@@ -243,16 +274,20 @@ export function createPet(host, opts) {
   const esc = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c])
   const paint = s => esc(s).replace(/「([^」]*)」?/g, (m) => `<span class="fy-q">${m}</span>`)
 
-  /** @param {{ text: string, tag?: string, priv?: boolean, anim?: string }} line */
+  /**
+   * @param {{ text: string, tag?: string, priv?: boolean, anim?: string, react?: any }} line
+   *   react：传了（一个时刻）就在最后一拍说完后，底下出 👍 👎 和两个按这一类写好的反应。
+   */
   function say(line) {
     hideBubble()
+    thinking = null
     const parts = beats(line.text)
     const b = doc.createElement('div'); b.className = 'fy-bubble up'
     b.innerHTML = (line.tag ? `<div class="fy-tag${line.priv ? ' priv' : ''}">${esc(line.tag)}</div>` : '') + '<div class="fy-text"></div>' + (parts.length > 1 ? `<div class="fy-dots">${parts.map(() => '<i></i>').join('')}</div>` : '')
     root.appendChild(b); bubble = b
     const textEl = b.querySelector('.fy-text')
     // 先用全文撑出最终大小再定位，打字时气泡不抖
-    textEl.textContent = parts.join(''); b.style.width = Math.min(270, Math.max(120, b.offsetWidth)) + 'px'
+    textEl.textContent = parts.join(''); b.style.width = Math.min(270, Math.max(line.react ? 236 : 120, b.offsetWidth)) + 'px'
     textEl.textContent = ''
     positionBubble()
     const t = talk = { i: 0, typed: '', full: false, timer: 0 }
@@ -280,9 +315,13 @@ export function createPet(host, opts) {
       if (talk !== t) return
       t.full = true
       const isLast = t.i === parts.length - 1
-      const read = Math.max(isLast ? 3500 : 900, [...parts[t.i]].length * (isLast ? 110 : 45))
+      if (isLast && line.react) addReactions(b, line.react)
+      const read = Math.max(isLast ? (line.react ? 9000 : 3500) : 900, [...parts[t.i]].length * (isLast ? 110 : 45))
       t.timer = setTimeout(() => { if (isLast) hideBubble(); else { t.i++; startBeat() } }, read)
     }
+    // 鼠标停在气泡上就别收（在犹豫点哪个反应）
+    b.addEventListener('pointerenter', () => { if (talk === t && t.full && t.i === parts.length - 1) clearTimeout(t.timer) })
+    b.addEventListener('pointerleave', () => { if (talk === t && t.full && t.i === parts.length - 1) { clearTimeout(t.timer); t.timer = setTimeout(hideBubble, 2500) } })
     b.addEventListener('pointerdown', e => {
       e.stopPropagation()
       if (talk !== t) return
@@ -293,29 +332,93 @@ export function createPet(host, opts) {
     startBeat()
   }
 
+  /** 说完后底下那一排：👍 👎 + 两个这一类专属的反应。点了大肥鱼接一句；👍👎 记下来，以后这一类多说 / 少说。 */
+  function addReactions(b, m) {
+    const row = doc.createElement('div'); row.className = 'fy-react'
+    const pick = (arr) => arr[Math.floor(Math.random() * arr.length)]
+    const opts2 = [
+      ['👍', '这种好玩', () => { vote(m.kind, 1); say({ text: pick(REPLY.up), anim: 'cheer' }) }],
+      ['👎', '这种没意思', () => { vote(m.kind, -1); say({ text: pick(REPLY.down), anim: 'sigh' }) }],
+      ...(REACT[m.kind] || REACT.work).map(([label, reply, anim]) => [label, null, () => reply ? say({ text: pick([].concat(reply)), anim }) : poke()]),
+    ]
+    for (const [label, title, fn] of opts2) {
+      const btn = doc.createElement('button'); btn.textContent = label; if (title) { btn.title = title; btn.className = 'emo' }
+      btn.addEventListener('pointerdown', e => e.stopPropagation())
+      btn.addEventListener('click', e => { e.stopPropagation(); fn() })
+      row.appendChild(btn)
+    }
+    b.appendChild(row)
+    positionBubble()
+  }
+  function vote(kind, d) {
+    const fb = { ...(opts.prefs.get().fb || {}) }
+    const cur = fb[kind] || [0, 0]
+    fb[kind] = d > 0 ? [cur[0] + 1, cur[1]] : [cur[0], cur[1] + 1]
+    opts.prefs.set({ fb })
+    for (const k in queues) delete queues[k]       // 下一轮按新口味重新排
+    opts.onFeedback?.(kind, d)
+  }
+
+  // ---------- 戳 ----------
+  // 戳一下 →「让本肥鱼想想……」0.7～1.3 秒 → 说。想的时候再戳：先「别催」，连戳就生气、冷静几秒。
+  let thinking = null
+  let pokes = []
+  let sulkUntil = 0
+  function thinkBubble(text) {
+    hideBubble()
+    const b = doc.createElement('div'); b.className = 'fy-bubble up fy-think'
+    b.innerHTML = `<div class="fy-text">${esc(text)}<span class="fy-ell"><i>.</i><i>.</i><i>.</i></span></div>`
+    b.addEventListener('pointerdown', e => e.stopPropagation())
+    root.appendChild(b); bubble = b
+    positionBubble()
+  }
+
   async function poke() {
     closeMenu()
-    // 蹦一下
+    const now = Date.now()
+    if (now < sulkUntil) { squash(0.9, 1.08, 120); if (!bubble) say({ text: pick(REPLY.sulk), anim: 'sigh' }); return }   // 生气那句还在就别盖掉
+    pokes = pokes.filter(t => now - t < 5000); pokes.push(now)
+    if (pokes.length >= 5) {
+      pokes = []; sulkUntil = now + 4000
+      vy = -900; squash(0.8, 1.2, 160); kick()
+      return say({ text: pick(REPLY.angry), anim: 'startle' })
+    }
+    if (thinking) {
+      thinking.nags++
+      squash(1.08, 0.92, 90)
+      thinkBubble(thinking.nags === 1 ? '别催别催，本肥鱼在想' : '再催本肥鱼就忘了')
+      return
+    }
+    // 蹦一下，开始想
     vy = -620; vx = 0; squash(1.12, 0.86, 90); kick()
-    let d = data
-    if (!d) { say({ text: '本鱼在翻记录……等一下下。', anim: 'file' }); d = await load() }
-    if (!d) return say({ text: '本鱼脑子卡住了，想不起来……（读记录失败了）', anim: 'sigh' })
+    const me = thinking = { nags: 0 }
+    thinkBubble('让本肥鱼想想')
+    playAnim('file')
+    const wait = new Promise(r => setTimeout(r, 700 + Math.random() * 600))
+    const d = data || await load()
+    await wait
+    if (thinking !== me) return
+    thinking = null
+    if (!d) return say({ text: '本肥鱼脑子卡住了，想不起来……（读记录失败了）', anim: 'sigh' })
     const pr = opts.prefs.get()
     const f = MODES.find(m => m[0] === pr.mode)?.[2] || (() => true)
     const qk = (pr.mode || 'all') + (pr.priv === false ? 0 : 1)
     if (!queues[qk]?.length) {
-      const pool = d.moments.filter(m => f(m) && (pr.priv === false || !m.sensitive.length))
-      for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]] }
-      queues[qk] = pool
+      // 带权重洗牌：👍 多的那一类更常出现，👎 多的少出现（加权蓄水池抽样的 key = u^(1/w)，大的先出）
+      const fb = pr.fb || {}
+      const w = k => { const [u, dn] = fb[k] || [0, 0]; return (1 + u) / (1 + dn * 2) }
+      queues[qk] = d.moments.filter(m => f(m) && (pr.priv === false || !m.sensitive.length))
+        .map(m => [Math.random() ** (1 / w(m.kind)), m]).sort((a, b) => a[0] - b[0]).map(x => x[1])
     }
     const m = queues[qk].pop()
     if (!m) {
-      return say({ text: d.moments.length ? '这一类本鱼想不起来了……右键换一类？' : '本鱼还没跟主人一起干过活呢。派点活给本鱼？', anim: 'poke' })
+      return say({ text: d.moments.length ? '这一类本肥鱼想不起来了……右键换一类？' : '本肥鱼还没跟主人一起干过活呢。派点活给本肥鱼？', anim: 'poke' })
     }
     const ago = Math.round((Date.now() - m.ts) / 864e5)
     const tag = [KIND[m.kind], m.kind === 'stat' ? null : ago <= 0 ? '今天' : `${ago} 天前`].filter(Boolean).join(' · ')
-    say({ text: m.text, tag: m.sensitive.length ? tag + ' · 私事' : tag, priv: m.sensitive.length > 0, anim: m.anim })
+    say({ text: m.text, tag: m.sensitive.length ? tag + ' · 私事' : tag, priv: m.sensitive.length > 0, anim: m.anim, react: m })
   }
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)]
 
   // ---------- 菜单 ----------
   let menu = null, folded = null
@@ -329,7 +432,7 @@ export function createPet(host, opts) {
     for (const [k, label] of MODES) item((pr.mode || 'all') === k ? '● ' + label : '○ ' + label, (pr.mode || 'all') === k, () => opts.prefs.set({ mode: k }))
     m.appendChild(doc.createElement('hr'))
     item((pr.priv === false ? '☐' : '☑') + ' 藏起私事（健康、感情、成绩、家庭）', false, () => { opts.prefs.set({ priv: pr.priv === false }) })
-    item('重新翻记录', false, () => { say({ text: '本鱼重新翻一遍记录……', anim: 'file' }); load(true).then(d => d && say({ text: `翻完了：${d.moments.length} 件事可以说。`, anim: 'cheer' })) })
+    item('重新翻记录', false, () => { say({ text: '本肥鱼重新翻一遍记录……', anim: 'file' }); load(true).then(d => d && say({ text: `翻完了：${d.moments.length} 件事可以说。`, anim: 'cheer' })) })
     for (const x of opts.menuExtras?.() || []) item(x.label, false, x.onClick)
     item('先收起来', false, fold)
     m.appendChild(doc.createElement('hr'))

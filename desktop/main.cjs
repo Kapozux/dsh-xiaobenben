@@ -58,7 +58,11 @@ app.whenReady().then(() => {
       const wait = ms => new Promise(r => setTimeout(r, ms))
       await wait(5000)
       await win.webContents.executeJavaScript('window.__fy.poke()')
-      await wait(4500)
+      for (let i = 0; i < 40; i++) {      // 等到说完、底下的反应按钮出来
+        await wait(500)
+        if (await win.webContents.executeJavaScript("!!document.querySelector('.fy-react')")) break
+      }
+      await wait(400)
       const img = await win.webContents.capturePage()
       fs.writeFileSync(process.env.FY_SELFTEST, img.toPNG())
       console.error('[大肥鱼自测] 气泡：', await win.webContents.executeJavaScript("document.querySelector('.fy-text')?.textContent || '(没有)'"))

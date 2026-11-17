@@ -43,11 +43,11 @@ export function Pet() {
       menuExtras: () => [{
         label: '放到桌面上（关了网页也在）',
         onClick: () => {
-          engine.say({ text: '本鱼搬家中……', anim: 'file' })
+          engine.say({ text: '本肥鱼搬家中……', anim: 'file' })
           call('desktop', { on: true }).then(d => {
             if (d.desktop?.on) syncDesktop(d)
-            else engine.say({ text: '本鱼上不了桌面：' + (d.desktop?.error || '不知道为什么'), anim: 'sigh' })
-          }).catch(e => engine.say({ text: '本鱼上不了桌面：' + e.message, anim: 'sigh' }))
+            else engine.say({ text: '本肥鱼上不了桌面：' + (d.desktop?.error || '不知道为什么'), anim: 'sigh' })
+          }).catch(e => engine.say({ text: '本肥鱼上不了桌面：' + e.message, anim: 'sigh' }))
         },
       }],
     })
