@@ -1,4 +1,5 @@
 import { LINES } from './lines.js'
+import { CHAT, MOOD_ANIM, ANIM_MOOD } from './chat.js'
 /**
  * 大肥鱼引擎：不依赖 React，dsh 浮层（Pet.jsx）和桌面窗口（desktop/）共用一份。
  *
@@ -10,6 +11,7 @@ import { LINES } from './lines.js'
  *   - 对话版台词：一轮一行（「本肥鱼：」「主人：」标签不显示，主人的话换颜色），打字机一行一行出。
  *   - 点气泡：正在打字就直接显示完，打完了就下一行；最后一行读完自己淡出。
  *   - 说完底下一排：👍 👎 + 一个这一类的反应 + 「再翻一件」。👍👎 记在本机，以后那一类多说 / 少说。
+ *   - 之后可以一直聊：她每回一句都给两个主人能说的话（src/shared/chat.js，按心情接），旁边永远有「再翻一件」。
  *   - 气泡贴着它、带尖角，靠边时自动换边；顶上一个小标签（哪一类 · 几天前）。
  * 左键点一下就翻旧账；只有主人点了才说话，不自己冒出来。
  */
@@ -377,7 +379,7 @@ export function createPet(host, opts) {
     const textEl = b.querySelector('.fy-text')
     const html = (k, s) => `<div${rs[k].who === 'master' ? ' class="fy-m"' : ''}>${paint(s)}</div>`
     // 先用全文撑出最终大小再定位，打字时气泡不抖
-    textEl.innerHTML = rs.map((r, k) => html(k, r.text)).join(''); b.style.width = Math.min(300, Math.max(line.react ? 250 : 120, b.offsetWidth)) + 'px'
+    textEl.innerHTML = rs.map((r, k) => html(k, r.text)).join(''); b.style.width = Math.min(300, Math.max(line.react || line.chat ? 250 : 120, b.offsetWidth)) + 'px'
     textEl.innerHTML = ''
     positionBubble()
     const t = talk = { i: 0, typed: '', full: false, timer: 0 }
@@ -403,7 +405,8 @@ export function createPet(host, opts) {
       t.full = true
       const isLast = t.i === parts.length - 1
       if (isLast && line.react) addReactions(b, line.react)
-      const read = Math.max(isLast ? (line.react ? 9000 : 3500) : 700, [...parts[t.i]].length * (isLast ? 110 : 40))
+      else if (isLast && line.chat) addChat(b, line.chat)
+      const read = Math.max(isLast ? (line.react || line.chat ? 9000 : 3500) : 700, [...parts[t.i]].length * (isLast ? 110 : 40))
       t.timer = setTimeout(() => { if (isLast) { hideBubble(); idle() } else { t.i++; startBeat() } }, read)
     }
     // 鼠标停在气泡上就别收（在犹豫点哪个反应）
@@ -423,9 +426,9 @@ export function createPet(host, opts) {
   function addReactions(b, m) {
     const row = doc.createElement('div'); row.className = 'fy-react'
     const opts2 = [
-      ['👍', '这种好玩', () => { vote(m.kind, 1); say({ text: pick(REPLY.up), anim: 'proud' }) }],
-      ['👎', '这种没意思', () => { vote(m.kind, -1); say({ text: pick(REPLY.down), anim: 'sigh' }) }],
-      ...shuffle((REACT[m.kind] || REACT.work).filter(r => r.replies.length)).slice(0, 1).map(r => [r.label, null, () => say({ text: pick(r.replies), anim: r.anim })]),
+      ['👍', '这种好玩', () => { vote(m.kind, 1); say({ text: pick(REPLY.up), anim: 'proud', chat: 'proud' }) }],
+      ['👎', '这种没意思', () => { vote(m.kind, -1); say({ text: pick(REPLY.down), anim: 'sigh', chat: 'sad' }) }],
+      ...shuffle((REACT[m.kind] || REACT.work).filter(r => r.replies.length)).slice(0, 1).map(r => [r.label, null, () => say({ text: pick(r.replies), anim: r.anim, chat: ANIM_MOOD[r.anim] || 'happy' })]),
       ['再翻一件', null, () => poke()],
     ]
     for (const [label, title, fn] of opts2) {
@@ -437,6 +440,38 @@ export function createPet(host, opts) {
     b.appendChild(row)
     positionBubble()
   }
+  /**
+   * 无限轮：她回完一句，按她现在的心情给两个主人能说的话（chat.js），点了她接一句、换心情，再给两个……
+   * 旁边永远有「再翻一件」。最近说过的按钮和回话先不重复。
+   */
+  const recent = { labels: [], replies: [] }
+  const remember = (list, x, n) => { list.push(x); if (list.length > n) list.shift() }
+  function addChat(b, mood) {
+    const row = doc.createElement('div'); row.className = 'fy-react'
+    const pool = CHAT[mood] || CHAT.happy
+    const fresh = pool.filter(c => !recent.labels.includes(c[0]))
+    const two = shuffle(fresh.length >= 2 ? fresh : pool).slice(0, 2)
+    for (const [label, replies, to] of two) {
+      const btn = doc.createElement('button'); btn.textContent = label
+      btn.addEventListener('pointerdown', e => e.stopPropagation())
+      btn.addEventListener('click', e => {
+        e.stopPropagation()
+        remember(recent.labels, label, 8)
+        const left = replies.filter(r => !recent.replies.includes(r))
+        const text = pick(left.length ? left : replies)
+        remember(recent.replies, text, 30)
+        say({ text, anim: MOOD_ANIM[to], chat: to })
+      })
+      row.appendChild(btn)
+    }
+    const more = doc.createElement('button'); more.textContent = '再翻一件'
+    more.addEventListener('pointerdown', e => e.stopPropagation())
+    more.addEventListener('click', e => { e.stopPropagation(); poke() })
+    row.appendChild(more)
+    b.appendChild(row)
+    positionBubble()
+  }
+
   function vote(kind, d) {
     const fb = { ...(opts.prefs.get().fb || {}) }
     const cur = fb[kind] || [0, 0]

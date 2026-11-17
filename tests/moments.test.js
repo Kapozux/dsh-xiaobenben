@@ -184,3 +184,20 @@ test('台词缓存：过期了先给旧的、后台重算，不让点的人等',
   assert.equal(n, 2, '后台重算了一次')
   assert.notEqual(pet.cache.value, a)
 })
+
+test('无限轮闲聊：每个心情至少 6 个按钮、每个 3 句回话；按钮 ≤6 字、回话 ≤40 字；接到的心情都存在，动作都有表情', async () => {
+  const { CHAT, MOOD_ANIM, ANIM_MOOD } = await import('../src/shared/chat.js')
+  const { EXPR } = await import('../src/shared/pet-engine.js')
+  const { LINES } = await import('../src/shared/lines.js')
+  for (const [mood, list] of Object.entries(CHAT)) {
+    assert.ok(list.length >= 6, mood)
+    assert.ok(MOOD_ANIM[mood] && EXPR[MOOD_ANIM[mood]], mood)
+    for (const [label, replies, to] of list) {
+      assert.ok([...label].length <= 6, label)
+      assert.equal(replies.length, 3, label)
+      for (const r of replies) assert.ok([...r].length <= 40, r)
+      assert.ok(CHAT[to], `${label} → ${to}`)
+    }
+  }
+  for (const list of Object.values(LINES.react)) for (const r of list) if (r.replies.length) assert.ok(ANIM_MOOD[r.anim], r.anim)
+})
