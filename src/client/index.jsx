@@ -5,6 +5,7 @@
  */
 import { YearPage } from './YearPage.jsx'
 import { Sources } from './Sources.jsx'
+import { Pet } from './Pet.jsx'
 import { CSS } from './style.js'
 
 export const inject = ['slots']
@@ -56,4 +57,10 @@ export function apply(ctx) {
     order: 60,
     label: () => '年度回顾',
   }, SourcesSection))
+
+  // 大肥鱼：全应用浮层（list slot，新 id 加在旁边，不顶掉别人）
+  ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+    name: 'shell.overlay',
+    id: 'agent-year-pet',
+  }, Pet))
 }

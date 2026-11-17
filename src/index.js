@@ -7,6 +7,7 @@ import Schema from '@deepseek-ai/schemastery'
 import { Review } from './review.js'
 import { Store } from './store.js'
 import { dshAdapter } from './llm-adapter.js'
+import { Pet } from './pet.js'
 
 export const name = 'dsh-agent-year'
 export const inject = ['sessionQuery', 'connection', 'llm', 'agentDefaultModel']
@@ -21,6 +22,7 @@ export const Config = Schema.object({
     currency: Schema.string().default('USD'),
   })).default([]).description('价格表。dsh 的模型配置里没有价格；不填就只显示 token 数，不猜价。'),
   expensiveOutputPrice: Schema.number().default(0).description('输出价格（每百万 token）高于这个数就提示「可以换便宜的模型」；0 = 不提示'),
+  petAssets: Schema.string().default('').description('大肥鱼动画目录（放 dsh-pet 那套透明 webm）；空 = 自动找本机装着的 dsh-pet'),
   sensitiveExtra: Schema.dict(Schema.array(Schema.string())).default({}).description('额外的敏感词，按类：{ 健康: [...], 感情: [...], 成绩: [...], 家庭: [...] }'),
 })
 
@@ -32,7 +34,9 @@ const json = (data, status = 200) => new Response(JSON.stringify(data), { status
  * @param {any} config
  */
 export function apply(ctx, config = {}) {
-  const review = new Review({ sessionQuery: ctx.sessionQuery, store: new Store(), config })
+  const store = new Store()
+  const review = new Review({ sessionQuery: ctx.sessionQuery, store, config })
+  const pet = new Pet({ sessionQuery: ctx.sessionQuery, store, assets: config.petAssets || null })
   const adapter = dshAdapter(ctx.llm)
   let running = null                          // 同一时间只跑一个生成，不排队、不并发
 
@@ -74,11 +78,27 @@ export function apply(ctx, config = {}) {
       running = review.generate({ range: body.range, kind: body.kind || 'all', route: body.route || currentRoute(), hash: body.hash, adapter, signal: request.signal })
       try { return await running } finally { running = null }
     },
+    async moments(body) {
+      return pet.moments({ fresh: !!body.fresh })
+    },
     async hide(body) {
       review.setHidden(body.hash, body.card, body.hidden)
       return { ok: true }
     },
   }
+
+  // 动画文件：页面用 fetch 取成 blob 再放（不靠 <video src> 带鉴权）
+  Reflect.get(ctx, 'connection').fetch.register({
+    path: PREFIX + 'anim',
+    methods: ['GET'],
+    requestBody: 'buffered',
+    fetch: async (request) => {
+      const name = new URL(request.url, 'http://x').searchParams.get('k') || ''
+      const buf = pet.anim(name)
+      if (!buf) return new Response('没有这段动画', { status: 404 })
+      return new Response(buf, { headers: { 'content-type': 'video/webm', 'cache-control': 'private, max-age=86400' } })
+    },
+  })
 
   for (const [key, handler] of Object.entries(routes)) {
     Reflect.get(ctx, 'connection').fetch.register({
