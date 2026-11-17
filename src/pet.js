@@ -31,7 +31,18 @@ export class Pet {
    * 同一时间只翻一次记录：并发的请求等同一个结果。
    * 过了 10 分钟先给旧的、后台重算（右键「翻旧账」要点了就说，不能等几秒读记录）；只有第一次和 fresh 才真等。
    */
-  moments({ fresh = false } = {}) {
+  moments({ fresh = false, raw = false } = {}) {
+    const p = this.#moments(fresh)
+    return raw ? p : p.then(v => this.#styled(v))
+  }
+
+  /** 有 AI 改写过的就换成改写的说法（m.styled = true），没有的照旧说模板的 */
+  #styled(v) {
+    const styled = this.store.read().styled || {}
+    return { ...v, moments: v.moments.map(m => styled[m.card?.id] ? { ...m, text: styled[m.card.id], template: m.text, styled: true } : m) }
+  }
+
+  #moments(fresh) {
     const claudeOn = !!this.store.read().sources?.claude
     const key = claudeOn ? 'c' : 'd'
     const have = this.cache && this.cache.key === key

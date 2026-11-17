@@ -9,6 +9,7 @@ import { Store } from './store.js'
 import { dshAdapter } from './llm-adapter.js'
 import { Pet } from './pet.js'
 import { PetLink } from './petlink.js'
+import { Styler } from './styler.js'
 
 export const name = 'dsh-xiaobenben'
 export const inject = ['sessionQuery', 'connection', 'llm', 'agentDefaultModel']
@@ -43,6 +44,7 @@ export function apply(ctx, config = {}) {
   petLink.start().catch(err => console.warn('[dsh-xiaobenben] 接 dsh-pet 的循环退出了', err))
   ctx.on('dispose', () => petLink.stop())
   const adapter = dshAdapter(ctx.llm)
+  const styler = new Styler({ pet, store, adapter, prices: config.prices || [] })
   let running = null                          // 同一时间只跑一个生成，不排队、不并发
 
   const currentRoute = () => {
@@ -85,6 +87,22 @@ export function apply(ctx, config = {}) {
     },
     async moments(body) {
       return pet.moments({ fresh: !!body.fresh })
+    },
+    async 'style.quote'(body) {
+      return styler.quote({ route: body.route || currentRoute(), redo: !!body.redo })
+    },
+    async 'style.run'(body) {
+      if (body.confirm !== true) return { ok: false, error: '没有确认，不发送' }
+      return styler.start({ route: body.route || currentRoute(), hash: body.hash, redo: !!body.redo })
+    },
+    async 'style.status'() {
+      return styler.status()
+    },
+    async 'style.stop'() {
+      return styler.stop()
+    },
+    async 'style.clear'() {
+      return styler.clear()
     },
     async petlink() {
       return petLink.status()

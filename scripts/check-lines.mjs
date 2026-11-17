@@ -1,6 +1,7 @@
 // 台词模板检查：node scripts/check-lines.mjs [某个.json]（不给就查 src/core/lines.js）。规则见 docs/lines-spec.md。
 import fs from 'node:fs'
-import { fill, width, MAX_WIDTH } from '../src/core/moments.js'
+import { fill, width } from '../src/core/moments.js'
+const MAX_WIDTH = 40      // 模板按 40 字写；运行时上限是 moments.js 的 MAX_WIDTH（50），给真实的长原话留余地
 
 export const TYPICAL = { w: '11 月 4 日凌晨', clock: '1:02', task: '导入脚本重构', dur: '12 分钟', doing: '，改了 4 个文件', rice: '3 碗', said: '你说得对，是我漏了', next: '还是不对啊', claim: '改好了，测试全过了', project: 'my-app', days: '23', files: '41', n: '37', span: '这 120 天', date: '10 月 3 日' }
 export const RULES = {

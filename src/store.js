@@ -1,6 +1,6 @@
 /**
  * 插件自己的本地状态：一份 JSON，放在 $DSH_HOME/storages/dsh-xiaobenben/state.json（默认 ~/.dsh）。
- * 存：数据源勾选、AI 结果缓存（含调用次数）、卡片隐藏状态。不存聊天内容本身。
+ * 存：数据源勾选、AI 结果缓存（含调用次数）、卡片隐藏状态、翻旧账的 AI 改写台词（styled，里面会有引用的原话）。
  * 没用 dsh 的 storageDomain：那套要 zod schema 和 defineDomain，单一 JSON 文件就够了，也好让用户一眼看到存了什么。
  */
 import fs from 'node:fs'

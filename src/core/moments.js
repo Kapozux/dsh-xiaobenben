@@ -181,7 +181,7 @@ function short(s, max = 14) {
 }
 /** 气泡里一句话的长度：不算空格（数字两边的空格是排版用的） */
 export const width = s => len(s.replace(/\s/g, ''))
-export const MAX_WIDTH = 40
+export const MAX_WIDTH = 50          // 气泡里一句话最多几个字（不算空格）。模板写的时候按 40 字写（scripts/check-lines.mjs），给真实的长原话留余地
 
 /**
  * 任务名压成 10 字以内的话题，不带引号：去客套（帮我把…一下）、去长英文技术词（能留下至少两个汉字时）、去路径。
@@ -256,19 +256,30 @@ const CAP = { work: 400, late: 150, report: 200, sorry: 150, complain: 150, caug
 export function buildMoments(turns, { since = 0, now = Date.now(), days = null } = {}) {
   const moments = []
   const seenSrc = new Set()
-  const add = (kind, ts, text, anim, src = '') => {
-    if (!text) return                         // 没有一条模板能塞进 40 字：这件事不说
+  const add = (kind, ts, text, anim, src = '', card = {}) => {
+    if (!text) return                         // 没有一条模板能塞进 50 字：这件事不说
     // 同一件事只说一次：Claude Code 续上旧会话时会把前面的记录抄进新文件，同一轮会出现好几次（模板按种子挑，文字不同，光按文字去重拦不住）
     const key = kind + '|' + (src ? src.replace(/\s+/g, '').slice(0, 120) : text)
     if (kind !== 'stat' && seenSrc.has(key)) return
     seenSrc.add(key)
-    moments.push({ kind, ts, day: dayKey(ts), hour: new Date(ts).getHours(), text, anim, sensitive: src ? sensitiveCats(src) : [] })
+    // 事件卡：只放程序判断 / 算出来的事实，给 AI 改写用（core/style.js）；模板说法 text 是兜底
+    const id = crypto.createHash('md5').update(kind + '|' + (src || text) + '|' + ts).digest('hex').slice(0, 10)
+    const c = Object.fromEntries(Object.entries({ id, kind, ...card }).filter(([, v]) => v !== null && v !== undefined && v !== ''))
+    moments.push({ kind, ts, day: dayKey(ts), hour: new Date(ts).getHours(), text, anim, sensitive: src ? sensitiveCats(src) : [], card: c })
   }
   const real = turns.filter(t => t.start >= since)
   const caughtNext = new Set()
+  // 「在哪件事上」：同一会话里上一轮派的活（挨骂时这一轮本身就是骂，活在上一轮）
+  const prevTask = new Map()
+  const lastTask = {}
+  for (const t of [...real].sort((a, b) => a.start - b.start)) {
+    prevTask.set(t, lastTask[t.key] || (t.title && topic(t.title)) || null)
+    const tk = task(t); if (tk) lastTask[t.key] = tk
+  }
 
   for (const tr of real) {
     const tk = task(tr)
+    const about = tk || prevTask.get(tr)
     const w = when(tr.start)
     const acts = [tr.edited.size && `改了 ${tr.edited.size} 个文件`, tr.commands && `跑了 ${tr.commands} 条命令`, tr.reads >= 10 && `翻了 ${tr.reads} 个文件`, tr.agents && `喊了 ${tr.agents} 个帮手`].filter(Boolean)
     const doing = acts.length ? '，' + acts[0] : ''     // 只说一件，句子才短
@@ -277,11 +288,14 @@ export function buildMoments(turns, { since = 0, now = Date.now(), days = null }
 
     if (tk && tr.active >= 5 * 60e3 && !tr.interrupted) {
       const late = new Date(tr.start).getHours() < 5
-      add(late ? 'late' : 'work', tr.start, fillFit(late ? TPL.late : TPL.work, seed, { w, clock: clock(tr.start), task: tk, dur: dur(tr.active), doing, rice: rice(tr.tokens) }), late ? 'yawn' : 'work', src)
+      const v = { w, clock: clock(tr.start), task: tk, dur: dur(tr.active), doing, rice: rice(tr.tokens) }
+      add(late ? 'late' : 'work', tr.start, fillFit(late ? TPL.late : TPL.work, seed, v), late ? 'yawn' : 'work', src,
+        { when: w, clock: late ? v.clock : null, task: tk, dur: v.dur, rice: v.rice + '白饭', did: acts[0] })
     }
 
     if (tr.interrupted && tr.active >= 60e3 && isHuman(tr.next) && !FILLER.test(tr.next.trim()) && len(tr.next) >= 3 && len(tr.next) <= 40) {
-      add('stopped', tr.end, fillFit(TPL.stopped, seed, ...quoteVars({ w, dur: dur(tr.active) }, { next: tr.next }, 14)), 'startle', tr.next)
+      add('stopped', tr.end, fillFit(TPL.stopped, seed, ...quoteVars({ w, dur: dur(tr.active) }, { next: tr.next }, 14)), 'startle', tr.next,
+        { when: w, task: about, dur: dur(tr.active), next: short(tr.next, 20) })
     }
 
     const lastText = tr.texts.at(-1) || ''
@@ -290,26 +304,30 @@ export function buildMoments(turns, { since = 0, now = Date.now(), days = null }
     for (const tx of tr.texts.slice(-3).reverse()) { claim = sentenceWith(tx, DONE, 40); if (claim) { claim = claim.replace(/^[-*#>\s]+/, ''); if ((claim.match(/[\u4e00-\u9fff]/g) || []).length < 2) { claim = null; continue }; break } }
     const nextFirst = (tr.next || '').split('\n')[0].trim()
     if (claim && isHuman(tr.next) && !FILLER.test(nextFirst) && BACKFIRE.test(nextFirst) && len(nextFirst) >= 2 && len(nextFirst) <= 60) {
-      add('caught', tr.start, fillFit(TPL.caught, seed, ...quoteVars({ w }, { claim, next: nextFirst }, 12)), 'caught', claim + ' ' + nextFirst)
+      add('caught', tr.start, fillFit(TPL.caught, seed, ...quoteVars({ w }, { claim, next: nextFirst }, 12)), 'caught', claim + ' ' + nextFirst,
+        { when: w, task: about, claim: short(claim, 20), next: short(nextFirst, 20) })
       caughtNext.add(tr.next)
     }
 
     const first = tr.text.split('\n')[0].trim()
     if (COMPLAIN.test(first) && len(first) <= 40 && !caughtNext.has(tr.text)) {     // 已经当成「被抓包」说过的那句不再当挨骂说
-      add('complain', tr.start, fillFit(TPL.complain, seed, ...quoteVars({ w }, { said: first }, 14)), 'sigh', first)
+      add('complain', tr.start, fillFit(TPL.complain, seed, ...quoteVars({ w }, { said: first }, 14)), 'sigh', first,
+        { when: w, task: prevTask.get(tr), said: short(first, 20) })
     }
 
     for (const tx of tr.texts) {
       const s = sentenceWith(tx, SORRY, 40)
       if (!s) continue
-      add('sorry', tr.start, fillFit(TPL.sorry, seed + s, ...quoteVars({ w }, { said: s }, 14)), 'bow', s)
+      add('sorry', tr.start, fillFit(TPL.sorry, seed + s, ...quoteVars({ w }, { said: s }, 14)), 'bow', s,
+        { when: w, task: about, said: short(s, 20) })
       break
     }
 
     if (tr.active >= 10 * 60e3 && !tr.interrupted) {
       const s = sentenceWith(lastText, /./, 40)
       if (s && !SORRY.test(s)) {
-        add('report', tr.end, fillFit(TPL.report, seed + 'r', ...quoteVars({ w: when(tr.end), dur: dur(tr.active) }, { said: s }, 14)), 'cheer', s)
+        add('report', tr.end, fillFit(TPL.report, seed + 'r', ...quoteVars({ w: when(tr.end), dur: dur(tr.active) }, { said: s }, 14)), 'cheer', s,
+          { when: when(tr.end), task: about, dur: dur(tr.active), said: short(s, 20) })
       }
     }
   }
@@ -318,7 +336,8 @@ export function buildMoments(turns, { since = 0, now = Date.now(), days = null }
   const span = days ? `这 ${days} 天` : '这段时间'
   const fillers = real.filter(t => FILLER.test(t.text.split('\n')[0].trim()) && /继续|continue|接着/i.test(t.text))
   if (fillers.length >= 5) {
-    add('stat', fillers.at(-1).start, fillFit(TPL.stat_continue, fillers.length, { span, n: fillers.length, dur: dur(fillers.reduce((a, t) => a + t.active, 0)) }), 'eat')
+    const v = { span, n: fillers.length, dur: dur(fillers.reduce((a, t) => a + t.active, 0)) }
+    add('stat', fillers.at(-1).start, fillFit(TPL.stat_continue, fillers.length, v), 'eat', '', { stat: '喊继续', span, times: `${v.n} 次「继续」`, dur: v.dur })
   }
   const byProject = {}
   for (const t of real) {
@@ -328,14 +347,20 @@ export function buildMoments(turns, { since = 0, now = Date.now(), days = null }
   }
   for (const [p, v] of Object.entries(byProject)) {
     if (v.ms < 60 * 60e3) continue
-    add('stat', now, fillFit(TPL.stat_project, p, { project: [...p].length > 14 ? [...p].slice(0, 14).join('') + '…' : p, dur: dur(v.ms), days: v.days.size, files: v.files.size, rice: rice(v.tok) }), 'file')
+    const project = [...p].length > 14 ? [...p].slice(0, 14).join('') + '…' : p
+    add('stat', now, fillFit(TPL.stat_project, p, { project, dur: dur(v.ms), days: v.days.size, files: v.files.size, rice: rice(v.tok) }), 'file', '',
+      { stat: '一个项目的总账', project, dur: dur(v.ms), days: `${v.days.size} 天`, files: v.files.size ? `${v.files.size} 个文件` : null, rice: rice(v.tok) + '白饭' })
   }
   const longest = [...real].sort((a, b) => b.active - a.active)[0]
-  if (longest && task(longest)) add('stat', longest.start, fillFit(TPL.stat_longest, longest.key + longest.start, { w: when(longest.start), task: task(longest), dur: dur(longest.active), rice: rice(longest.tokens) }), 'eat', longest.text)
+  if (longest && task(longest)) add('stat', longest.start, fillFit(TPL.stat_longest, longest.key + longest.start, { w: when(longest.start), task: task(longest), dur: dur(longest.active), rice: rice(longest.tokens) }), 'eat', longest.text,
+    { stat: '最久的一次', when: when(longest.start), task: task(longest), dur: dur(longest.active), rice: rice(longest.tokens) + '白饭' })
   const perDay = {}
   for (const t of real) perDay[dayKey(t.start)] = (perDay[dayKey(t.start)] || 0) + t.active
   const busiest = Object.entries(perDay).sort((a, b) => b[1] - a[1])[0]
-  if (busiest && busiest[1] >= 30 * 60e3) add('stat', new Date(busiest[0] + 'T12:00').getTime(), fillFit(TPL.stat_busiest, busiest[0], { date: `${+busiest[0].slice(5, 7)} 月 ${+busiest[0].slice(8)} 日`, dur: dur(busiest[1]) }), 'eat')
+  if (busiest && busiest[1] >= 30 * 60e3) {
+    const date = `${+busiest[0].slice(5, 7)} 月 ${+busiest[0].slice(8)} 日`
+    add('stat', new Date(busiest[0] + 'T12:00').getTime(), fillFit(TPL.stat_busiest, busiest[0], { date, dur: dur(busiest[1]) }), 'eat', '', { stat: '最累的一天', date, dur: dur(busiest[1]) })
+  }
 
   const seen = new Set()
   const capped = {}

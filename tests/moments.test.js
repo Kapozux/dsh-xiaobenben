@@ -138,8 +138,8 @@ test('原话：脏话打成 ××；在空格处截时前面至少两个汉字', 
   assert.match(caught.text, /××/)
 })
 
-test('超过 40 字自动换短模板；全都塞不下就不说', () => {
-  const list = ['这一条特别特别长：{said}，本鱼要把它说完说完说完说完说完说完。', '短的：「{said}」']
+test('超过 50 字自动换短模板；全都塞不下就不说', () => {
+  const list = ['这一条特别特别长：{said}，本鱼要把它说完说完说完说完说完说完说完说完说完说完说完。', '短的：「{said}」']
   for (let i = 0; i < 20; i++) assert.equal(fillFit(list, i, { said: '你说得对是我漏了一个分支呀' }), '短的：「你说得对是我漏了一个分支呀」')
   assert.equal(fillFit([list[0]], 0, { said: '你说得对是我漏了一个分支呀' }), null)
 })
@@ -163,10 +163,10 @@ test('台词缓存：过期了先给旧的、后台重算，不让点的人等',
   let n = 0
   const slow = () => new Promise(r => setTimeout(() => r({ sessions: 0, skipped: 0, turns: [] }), 50))
   const pet = new Pet({ sessionQuery: { listSessions: async () => { n++; return [] } }, store: { read: () => ({ sources: { claude: true } }) }, loadClaude: slow })
-  const a = await pet.moments()
+  const a = await pet.moments({ raw: true })
   pet.cache.at -= 11 * 60e3                      // 假装过期
   const t0 = Date.now()
-  const b = await pet.moments()
+  const b = await pet.moments({ raw: true })
   assert.ok(Date.now() - t0 < 20, '过期也立刻回')
   assert.equal(b, a)
   await new Promise(r => setTimeout(r, 100))
