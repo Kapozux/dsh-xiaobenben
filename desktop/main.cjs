@@ -1,14 +1,12 @@
 // 大肥鱼桌面版（Electron 主进程）：一个铺满主屏工作区的透明窗口，置顶、不进 Dock、默认点击穿透；
 // 鼠标移到大肥鱼 / 气泡 / 菜单上才接管点击（渲染进程通过 preload 告诉这里）。
-// 台词和动画都不自己算：插件 host 写好 moments.json，动画目录由 host 通过环境变量告诉我们。dsh 关了也能用最后一份台词。
+// 台词不自己算：插件 host 写好 moments.json；立绘和字体在插件自己的 assets/ 里。dsh 关了也能用最后一份台词。
 const { app, BrowserWindow, ipcMain, protocol, screen, net } = require('electron')
 const fs = require('node:fs')
 const path = require('node:path')
 const { pathToFileURL } = require('node:url')
 
 const STATE_DIR = process.env.FY_STATE_DIR          // $DSH_HOME/storages/dsh-xiaobenben
-const ANIM_DIR = process.env.FY_ANIM_DIR || ''
-const ANIM = JSON.parse(process.env.FY_ANIM_MAP || '{}')
 const ROOT = path.resolve(__dirname, '..')
 
 if (!STATE_DIR) { console.error('[大肥鱼] 缺 FY_STATE_DIR'); process.exit(2) }
@@ -27,10 +25,10 @@ app.whenReady().then(() => {
       try { return new Response(fs.readFileSync(path.join(STATE_DIR, 'moments.json')), { headers: { 'content-type': 'application/json' } }) }
       catch (err) { console.error('[大肥鱼] 读台词失败', err.message); return new Response('{}', { status: 404 }) }
     }
-    if (u.pathname.startsWith('/anim/')) {
-      const k = u.pathname.slice(6)
-      if (!ANIM_DIR || !Object.hasOwn(ANIM, k)) return new Response('', { status: 404 })
-      return net.fetch(pathToFileURL(path.join(ANIM_DIR, ANIM[k] + '.webm')).toString())
+    if (/^\/assets\/(xiaobenben|fonts)\/[\w-]+\.(png|woff2)$/.test(u.pathname)) {
+      const f = path.join(ROOT, u.pathname)
+      if (!fs.existsSync(f)) return new Response('', { status: 404 })
+      return net.fetch(pathToFileURL(f).toString())
     }
     const rel = STATIC[u.pathname]
     if (!rel) return new Response('', { status: 404 })

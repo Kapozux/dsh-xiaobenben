@@ -19,7 +19,7 @@ test('核对：原话要一字不差、数字只能来自卡片、≤50 字、�
   assert.match(checkLine(complain, '一个多月前，合并页那会儿你急了，我大肥鱼觉得懂的。'), /没引卡片里的原话/)
   assert.match(checkLine(complain, '一个多月前，你在合并页抱怨「你到底行不行」，我大肥鱼觉得干了 3 小时。'), /数字 3 卡片里没有/)
   assert.match(checkLine(complain, '一个多月前，主人：「你到底行不行」本鱼：好嘛。'), /对话体/)
-  assert.match(checkLine(complain, '一个多月前，「你到底行不行」' + '本鱼'.repeat(30)), /超过 50/)
+  assert.match(checkLine(complain, '一个多月前，「你到底行不行」' + '本鱼'.repeat(30)), /超过 \d+/)
   assert.match(checkLine(complain, '11 月 4 日凌晨，你冲我说「你到底行不行」，我大肥鱼表示理解。'), /没以「一个多月前」开头/)
   assert.match(checkLine(complain, '一个多月前，你冲我说「你到底行不行」，本鱼缩成一团。'), /没有大肥鱼的看法/)
   assert.equal(checkLine(caught, '十几天前，我拍胸脯说「改好了」，你回「还是不行」，我大肥鱼承认那句话说早了。'), null)

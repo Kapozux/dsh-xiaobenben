@@ -1,21 +1,15 @@
 /**
- * 设置 → 年度回顾 里的「翻旧账（dsh-pet）」一块：dsh-pet 接没接上，以及「让模型换个说法」的发送确认。
- * 翻旧账只在桌宠上说（右键 dsh-pet → 更多 → 翻旧账），没有单独的页面。
+ * 设置 → 年度回顾 里的「翻旧账」一块：怎么玩，以及「让模型换个说法」的发送确认。
+ * 翻旧账只在挂件上说（左键点小本本），没有单独的页面。
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { call } from './api.js'
 
 export function PetSettings() {
-  const [link, setLink] = useState(null)
-  useEffect(() => { call('petlink', {}).then(setLink).catch(() => {}) }, [])
   return (
     <div style={{ marginTop: 28 }}>
-      <h3 style={{ margin: '0 0 6px' }}>翻旧账（dsh-pet）</h3>
-      <p className="ay-small">
-        {link?.connected
-          ? '已接上 dsh-pet：右键它 → 更多 → 翻旧账，它会说一件你们以前一起干过的事。'
-          : '要装 dsh-pet 才能用：装好后右键它 → 更多 → 翻旧账。' + (link?.error ? `（现在没接上：${link.error}）` : '')}
-      </p>
+      <h3 style={{ margin: '0 0 6px' }}>翻旧账</h3>
+      <p className="ay-small">点一下右下角的小本本，她就翻一件你们以前一起干过的事；右键她有菜单（说哪一类、藏起私事、放到桌面上）。</p>
       <StyleSection onChanged={() => {}} />
     </div>
   )

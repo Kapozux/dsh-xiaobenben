@@ -2,8 +2,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { buildMoments, claudeTurns, dshTurns, fill, fillFit, say, ago, topic, width } from '../src/core/moments.js'
+import { rounds } from '../src/shared/pet-engine.js'
 import { check } from '../scripts/check-lines.mjs'
-import { FACT, VIEW } from '../src/core/lines.js'
+import { TPL } from '../src/core/lines.js'
 
 const T0 = new Date(2026, 10, 3, 14, 0).getTime()
 const min = m => T0 + m * 60e3
@@ -100,26 +101,28 @@ test('Claude Code：被打断后主人的下一句是「继续」不算喊停；
   assert.match(stopped[0].text, /别动 〔路径〕 那个文件/)
 })
 
-test('模板全部过检查：事实句 + 我大肥鱼的看法，不换行、不对话体、引号不套娃、组合起来 ≤50 字', () => {
+test('800 条对话版模板全部过检查：必须的占位符各一次、填完没残留、引号不套娃、不超长', () => {
   for (const [k, r] of Object.entries(check())) {
     assert.deepEqual(r.bad, [], k)
     assert.equal(r.dup, 0, k)
-    assert.ok(r.combos >= 18, k)
-  }
-  const full = { clock: '1:02', task: '导入脚本重构', dur: '12 分钟', doing: '，改了 4 个文件', rice: '小半碗', next: '还是不对啊', claim: '改好了', said: '你说得对', project: 'my-app', days: 23, files: 41, n: 37, date: '10 月 3 日' }
-  for (const list of Object.values(FACT)) for (const f of list) for (const vars of [full, { ...full, doing: '', rice: '3 碗' }]) {
-    assert.doesNotMatch(fill(f, vars), /[{}]|，，|。，|「，|\n| 小半碗/)
+    assert.ok(r.count >= 25, k)
   }
 })
 
-test('每句三段：多久之前，那件事，我大肥鱼的看法', () => {
-  const now = new Date(2026, 10, 17, 12).getTime()
-  assert.equal(ago(now - 40 * 864e5, now), '一个多月前')
-  assert.equal(ago(now - 864e5, now), '昨天')
-  const out = say('complain', 'x', '一个多月前', { task: '合并页', said: '你到底行不行' })
-  assert.match(out, /^一个多月前，.*「你到底行不行」.*，(我大肥鱼|大肥鱼)/)
-  assert.ok(VIEW.complain.some(v => out.endsWith(v)))
-  assert.equal(say('complain', 'x', '一个多月前', { said: '这句原话特别特别长长长长长长长长长长长长长长长长长长长长长长长长长长长长' }), null)
+test('按类型挑模板：缺值的跳过，太长换下一条，都不行就不说', () => {
+  const out = say('complain', 'x', { w: '10 月 3 日中午' }, { said: '你到底行不行' })
+  assert.match(out, /「你到底行不行」/)
+  assert.ok(TPL.complain.some(t => fill(t, { w: '10 月 3 日中午', said: '你到底行不行' }) === out))
+  assert.equal(say('complain', 'x', {}, { said: '长'.repeat(80) }), null)
+})
+
+test('气泡：一轮一行，去掉「本肥鱼：」「主人：」，主人的话单独标出来', () => {
+  assert.deepEqual(rounds('主人：「{task}要多久？」\n本肥鱼：「12 分钟。」\n主人：「……饭是重点吧？」'.replace('{task}', '导入')), [
+    { who: 'master', text: '「导入要多久？」' }, { who: 'me', text: '「12 分钟。」' }, { who: 'master', text: '「……饭是重点吧？」' },
+  ])
+  assert.deepEqual(rounds('嘿咻！搞定啦。'), [{ who: 'me', text: '嘿咻！搞定啦。' }])
+  assert.deepEqual(rounds('主人：下次呢？本肥鱼：下次早点说。'), [{ who: 'master', text: '下次呢？' }, { who: 'me', text: '下次早点说。' }])
+  assert.equal(rounds('今天的本肥鱼：搞完了。').length, 1)     // 不是说话人标签，不拆
 })
 
 test('任务名压成 ≤10 字、不带引号：去客套、去长英文词、去括号补充；带路径或压不下就不要', () => {
@@ -146,8 +149,8 @@ test('原话：脏话打成 ××；在空格处截时前面至少两个汉字', 
   assert.match(caught.text, /××/)
 })
 
-test('超过 50 字自动换短模板；全都塞不下就不说', () => {
-  const list = ['这一条特别特别长：{said}，本鱼要把它说完说完说完说完说完说完说完说完说完说完说完。', '短的：「{said}」']
+test('超过上限自动换短模板；全都塞不下就不说', () => {
+  const list = ['这一条特别特别长：{said}，本鱼要把它说完' + '说完'.repeat(30) + '。', '短的：「{said}」']
   for (let i = 0; i < 20; i++) assert.equal(fillFit(list, i, { said: '你说得对是我漏了一个分支呀' }), '短的：「你说得对是我漏了一个分支呀」')
   assert.equal(fillFit([list[0]], 0, { said: '你说得对是我漏了一个分支呀' }), null)
 })

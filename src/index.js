@@ -3,12 +3,14 @@
  * 只做三件事：读会话（ctx.sessionQuery + 用户勾选的外部来源）、开几个只读的 fetch 路由给页面、用户点头后调一次模型。
  * API 出处见 docs/dsh-api.md；这里用到的每个 ctx 服务都在那份文档里核对过。
  */
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import Schema from '@deepseek-ai/schemastery'
 import { Review } from './review.js'
 import { Store } from './store.js'
 import { dshAdapter } from './llm-adapter.js'
 import { Pet } from './pet.js'
-import { PetLink } from './petlink.js'
 import { Desktop } from './desktop.js'
 import { Styler } from './styler.js'
 
@@ -26,11 +28,18 @@ export const Config = Schema.object({
   })).default([]).description('价格表。dsh 的模型配置里没有价格；不填就只显示 token 数，不猜价。'),
   expensiveOutputPrice: Schema.number().default(0).description('输出价格（每百万 token）高于这个数就提示「可以换便宜的模型」；0 = 不提示'),
   electronPath: Schema.string().default('').description('大肥鱼桌面版用的 Electron.app 路径；空 = 自动找本机 Electron 下载缓存'),
-  petAssets: Schema.string().default('').description('大肥鱼动画目录（dsh-pet 那套透明 webm）；空 = 自动找本机装着的 dsh-pet'),
   sensitiveExtra: Schema.dict(Schema.array(Schema.string())).default({}).description('额外的敏感词，按类：{ 健康: [...], 感情: [...], 成绩: [...], 家庭: [...] }'),
 })
 
 const PREFIX = '/api/xiaobenben.'
+const ASSETS = fileURLToPath(new URL('../assets/', import.meta.url))
+const ASSET_TYPES = { '.png': 'image/png', '.woff2': 'font/woff2' }
+/** k 形如 xiaobenben/normal.png、fonts/xbb-rounded.woff2；只认这两个目录、这两种文件，不许 .. */
+export function assetFile(k) {
+  if (!/^(xiaobenben|fonts)\/[\w-]+\.(png|woff2)$/.test(k)) return null
+  const f = path.join(ASSETS, k)
+  try { return fs.statSync(f).isFile() ? f : null } catch { return null }
+}
 const json = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } })
 
 /**
@@ -40,14 +49,10 @@ const json = (data, status = 200) => new Response(JSON.stringify(data), { status
 export function apply(ctx, config = {}) {
   const store = new Store()
   const review = new Review({ sessionQuery: ctx.sessionQuery, store, config })
-  const pet = new Pet({ sessionQuery: ctx.sessionQuery, store, assets: config.petAssets || null })
+  const pet = new Pet({ sessionQuery: ctx.sessionQuery, store })
   const desktop = new Desktop({ store, pet, electron: config.electronPath || '' })
   desktop.resume()
-  // 装了 dsh-pet 就在它右键「更多」里挂「翻旧账」；没装就每分钟看一眼，不打扰
-  const petLink = new PetLink({ pet })
   pet.moments().catch(err => console.warn('[dsh-xiaobenben] 预先翻记录失败', err))   // 启动就先翻好，第一次点不用等
-  petLink.start().catch(err => console.warn('[dsh-xiaobenben] 接 dsh-pet 的循环退出了', err))
-  ctx.on('dispose', () => petLink.stop())
   const adapter = dshAdapter(ctx.llm)
   const styler = new Styler({ pet, store, adapter, prices: config.prices || [] })
   let running = null                          // 同一时间只跑一个生成，不排队、不并发
@@ -114,25 +119,22 @@ export function apply(ctx, config = {}) {
       if (body.on === false) return { desktop: desktop.stop() }
       return { desktop: desktop.status() }
     },
-    async petlink() {
-      return petLink.status()
-    },
     async hide(body) {
       review.setHidden(body.hash, body.card, body.hidden)
       return { ok: true }
     },
   }
 
-  // 动画文件：页面用 fetch 取成 blob 再放（不靠 <video src> 带鉴权）
+  // 挂件的素材（立绘 PNG、字体）：只给 assets/ 底下白名单里的文件
   Reflect.get(ctx, 'connection').fetch.register({
-    path: PREFIX + 'anim',
+    path: PREFIX + 'asset',
     methods: ['GET'],
     requestBody: 'buffered',
     fetch: async (request) => {
-      const name = new URL(request.url, 'http://x').searchParams.get('k') || ''
-      const buf = pet.anim(name)
-      if (!buf) return new Response('没有这段动画', { status: 404 })
-      return new Response(buf, { headers: { 'content-type': 'video/webm', 'cache-control': 'private, max-age=86400' } })
+      const k = new URL(request.url, 'http://x').searchParams.get('k') || ''
+      const file = assetFile(k)
+      if (!file) return new Response('没有这个文件', { status: 404 })
+      return new Response(fs.readFileSync(file), { headers: { 'content-type': ASSET_TYPES[path.extname(file)], 'cache-control': 'private, max-age=86400' } })
     },
   })
 

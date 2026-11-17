@@ -12,7 +12,6 @@ import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
-import { ANIM } from './pet.js'
 
 const run = promisify(execFile)
 const MAIN = fileURLToPath(new URL('../desktop/main.cjs', import.meta.url))
@@ -60,7 +59,7 @@ export class Desktop {
       const child = spawn(bin, [MAIN], {
         detached: true,
         stdio: ['ignore', 'ignore', fs.openSync(path.join(this.dir, 'desktop.log'), 'a')],
-        env: { ...process.env, ELECTRON_RUN_AS_NODE: '', FY_STATE_DIR: this.dir, FY_ANIM_DIR: this.pet.assetsDir || '', FY_ANIM_MAP: JSON.stringify(ANIM) },
+        env: { ...process.env, ELECTRON_RUN_AS_NODE: '', FY_STATE_DIR: this.dir },
       })
       child.unref()
       this.store.update(s => ({ ...s, desktop: { on: true, pid: child.pid, error: null } }))
@@ -86,7 +85,7 @@ export class Desktop {
     const v = await this.pet.moments({ fresh })
     const file = path.join(this.dir, 'moments.json')
     fs.mkdirSync(this.dir, { recursive: true })
-    fs.writeFileSync(file + '.tmp', JSON.stringify({ at: Date.now(), days: v.days, anims: v.anims, moments: v.moments }), { mode: 0o600 })
+    fs.writeFileSync(file + '.tmp', JSON.stringify({ at: Date.now(), days: v.days, moments: v.moments }), { mode: 0o600 })
     fs.renameSync(file + '.tmp', file)
   }
 

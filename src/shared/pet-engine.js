@@ -5,11 +5,13 @@ import { LINES } from './lines.js'
  * 手感：
  *   - 有重力，落到「地面」（容器底边）；抓起来能甩，撞墙、落地会弹，落地时压扁再弹回；拖着走时身子顺着速度歪。
  *   - 戳一下：先蹦一下，再说话。
+ * 形象：小本本鲸鱼娘的透明 PNG（assets/xiaobenben/），动画全靠代码：轻轻上下浮、隔几秒换一张闭眼图眨眼、按台词类型换表情图（缺哪张就用 normal.png）。
  * 说话：
- *   - 一句拆成两三拍（交代事 → 原话 → 反应），打字机一拍一拍出，笑点在最后一拍，动画也在最后一拍播。
- *   - 点气泡：正在打字就直接显示完，打完了就下一拍；最后一拍读完自己淡出。
+ *   - 对话版台词：一轮一行（「本肥鱼：」「主人：」标签不显示，主人的话换颜色），打字机一行一行出。
+ *   - 点气泡：正在打字就直接显示完，打完了就下一行；最后一行读完自己淡出。
+ *   - 说完底下 3 个按钮：两个这一类的反应 + 「再翻一件」。
  *   - 气泡贴着它、带尖角，靠边时自动换边；顶上一个小标签（哪一类 · 几天前）。
- * 只有主人戳了才说话，不自己冒出来。
+ * 左键点一下就翻旧账；只有主人点了才说话，不自己冒出来。
  */
 
 const KIND = { work: '干活', late: '深夜', report: '汇报', sorry: '认错', complain: '挨骂', caught: '被抓包', stopped: '被喊停', stat: '总账' }
@@ -33,41 +35,59 @@ const pick = arr => arr[Math.floor(Math.random() * arr.length)]
 const shuffle = arr => arr.map(x => [Math.random(), x]).sort((a, b) => a[0] - b[0]).map(x => x[1])
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
 
+const SPEAKER = /^\s*(本肥鱼|本鱼|大肥鱼|小本本|主人|你)\s*[：:]\s*/u
 /**
- * 一句台词拆成几拍：按句末标点切，引号「」里面不切；太碎的并起来，最多 3 拍。
+ * 台词拆成几轮：一行一轮，去掉开头的「本肥鱼：」「主人：」标签，记下是谁说的（主人的话显示成另一种颜色）。
  * @param {string} text
+ * @returns {{ who: 'me'|'master', text: string }[]}
  */
-export function beats(text) {
-  const out = []
-  let cur = '', depth = 0
-  for (const ch of text) {
-    cur += ch
-    if (ch === '「') depth++
-    else if (ch === '」') depth = Math.max(0, depth - 1)
-    if (depth === 0 && (/[。！？!?]/.test(ch) || ch === '\n')) { if (cur.trim()) out.push(cur.trim()); cur = '' }
-  }
-  if (cur.trim()) out.push(cur.trim())
-  // 太短的往后并（「好的好的，本肥鱼停手。」这种单独成拍可以，但「……」不行）
-  const merged = []
-  for (const s of out) {
-    if (merged.length && ([...merged.at(-1)].length < 8 || [...s].length < 4)) merged[merged.length - 1] += s
-    else merged.push(s)
-  }
-  while (merged.length > 3) {
-    let best = 0
-    for (let i = 1; i < merged.length - 1; i++) if (merged[i].length + merged[i + 1].length < merged[best].length + merged[best + 1].length) best = i
-    merged.splice(best, 2, merged[best] + merged[best + 1])
-  }
-  return merged
+export function rounds(text) {
+  // 有的模板把下一轮写在同一行（「下次呢？本肥鱼：下次早点说。」）：句末标点后面紧跟人名标签就另起一行
+  return text.replace(/([。！？!?」）…])\s*(?=(本肥鱼|主人)\s*[：:])/gu, '$1\n').split('\n').map(s => s.trim()).filter(Boolean).map(s => {
+    const m = s.match(SPEAKER)
+    return { who: m && (m[1] === '主人' || m[1] === '你') ? 'master' : 'me', text: m ? s.slice(m[0].length) : s }
+  })
 }
 
+/** 台词里的动作 → 表情图（assets/xiaobenben/<名字>.png）。缺的图用 normal。 */
+export const EXPR = {
+  idle: 'normal', work: 'thinking', file: 'thinking', yawn: 'sleepy', startle: 'surprised', drag: 'surprised',
+  caught: 'shy', bow: 'shy', sigh: 'sad', cheer: 'happy', eat: 'happy', poke: 'happy',
+}
+export const FIGURES = ['normal', 'blink', 'happy', 'sad', 'surprised', 'sleepy', 'shy', 'thinking']
+
 const CSS = `
-.fy-root { position: absolute; inset: 0; pointer-events: none; overflow: hidden; font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; }
+.fy-root { position: absolute; inset: 0; pointer-events: none; overflow: hidden; font-family: "XBB Rounded", -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; }
 .fy-pet { position: absolute; left: 0; top: 0; pointer-events: auto; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; will-change: transform; }
 .fy-pet.drag { cursor: grabbing; }
 .fy-body { width: 100%; height: 100%; transform-origin: 50% 100%; transition: transform .16s cubic-bezier(.3,1.6,.5,1); }
-.fy-body video, .fy-body svg { width: 100%; height: 100%; object-fit: contain; display: block; pointer-events: none; }
-.fy-body video { transform: scale(1.7); transform-origin: 50% 62%; }
+.fy-float { width: 100%; height: 100%; animation: fy-float 3.2s ease-in-out infinite; }
+.fy-pet.drag .fy-float { animation-play-state: paused; }
+.fy-float img, .fy-float svg { width: 100%; height: 100%; object-fit: contain; object-position: 50% 100%; display: block; pointer-events: none; -webkit-user-drag: none; }
+@keyframes fy-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+/* 表情：没有单独表情图时，用代码加漫画符号 + 身体动作 */
+.fy-fig { position: relative; width: 100%; height: 100%; transform-origin: 50% 100%; }
+.fy-mark { position: absolute; left: 70%; top: 4%; font-weight: 700; font-size: 26px; line-height: 1; color: #2a241d; pointer-events: none; white-space: nowrap; opacity: 0; }
+.fy-e-happy .fy-mark, .fy-e-surprised .fy-mark, .fy-e-sleepy .fy-mark, .fy-e-shy .fy-mark, .fy-e-sad .fy-mark, .fy-e-thinking .fy-mark { opacity: 1; }
+.fy-e-happy .fy-mark { color: #e0568a; animation: fy-note 1s ease-in-out infinite; }
+.fy-e-happy .fy-fig { animation: fy-hop .5s ease-in-out 2; }
+.fy-e-surprised .fy-mark { color: #e5484d; font-size: 34px; left: 72%; animation: fy-pop .2s ease-out; }
+.fy-e-surprised .fy-fig { animation: fy-jump .35s ease-out; }
+.fy-e-sleepy .fy-mark { color: #5b6bbf; animation: fy-zz 2.4s ease-in-out infinite; }
+.fy-e-sleepy .fy-fig { animation: fy-sway 3s ease-in-out infinite; }
+.fy-e-shy .fy-mark { left: 31%; top: 34%; font-size: 15px; color: #f07a8c; letter-spacing: -2px; }
+.fy-e-shy .fy-mark::after { content: "///"; position: absolute; left: 66px; }
+.fy-e-shy .fy-fig { animation: fy-wiggle .6s ease-in-out 2; }
+.fy-e-sad .fy-mark { color: #4ea3e8; left: 74%; top: 22%; animation: fy-drop 1.4s ease-in infinite; }
+.fy-e-sad .fy-fig { transform: translateY(4px) scale(1, .97); transition: transform .3s; }
+.fy-e-thinking .fy-mark { color: #8a8175; animation: fy-note 1.6s ease-in-out infinite; }
+@keyframes fy-note { 0%, 100% { transform: translateY(0) rotate(-8deg); } 50% { transform: translateY(-8px) rotate(8deg); } }
+@keyframes fy-hop { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(-14px); } }
+@keyframes fy-jump { 0% { transform: translateY(0) scale(1); } 40% { transform: translateY(-22px) scale(.96, 1.05); } 100% { transform: translateY(0) scale(1); } }
+@keyframes fy-sway { 0%, 100% { transform: rotate(-2deg); } 50% { transform: rotate(2deg); } }
+@keyframes fy-wiggle { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-3deg); } 75% { transform: rotate(3deg); } }
+@keyframes fy-zz { 0% { transform: translate(0, 0); opacity: 0; } 30% { opacity: 1; } 100% { transform: translate(14px, -22px); opacity: 0; } }
+@keyframes fy-drop { 0% { transform: translateY(0); opacity: 1; } 100% { transform: translateY(18px); opacity: 0; } }
 .fy-shadow { position: absolute; left: 50%; bottom: 2px; width: 46%; height: 10px; margin-left: -23%; border-radius: 50%; background: rgba(0,0,0,.22); filter: blur(3px); pointer-events: none; }
 .fy-bubble { position: absolute; left: 0; top: 0; pointer-events: auto; max-width: 300px; min-width: 120px; box-sizing: border-box; padding: 10px 14px 11px; border-radius: 16px;
   background: #fffdf8; color: #2a241d; border: 2px solid #2a241d; box-shadow: 3px 4px 0 rgba(42,36,29,.9); font-size: 14px; line-height: 1.6; cursor: pointer;
@@ -79,7 +99,10 @@ const CSS = `
 .fy-bubble.down::after { top: -9px; transform: rotate(225deg); }
 .fy-tag { display: inline-block; font-size: 11px; line-height: 1; padding: 3px 7px; margin: 0 0 6px; border-radius: 99px; background: #2a241d; color: #fffdf8; letter-spacing: .5px; }
 .fy-tag.priv { background: #c9821c; }
-.fy-text { white-space: pre-line; min-height: 1.6em; }
+.fy-text { min-height: 1.6em; }
+.fy-text > div + div { margin-top: 2px; }
+.fy-text .fy-m { color: #c2410c; }
+.fy-text .fy-m .fy-q { color: inherit; }   /* 主人的话整行一个颜色，引号不另上色 */
 .fy-text .fy-q { color: #2f5bea; font-weight: 600; }
 .fy-dots { margin-top: 4px; display: flex; gap: 4px; }
 .fy-dots i { width: 5px; height: 5px; border-radius: 50%; background: #d8cfc0; }
@@ -109,6 +132,8 @@ const CSS = `
   .fy-bubble, .fy-menu, .fy-dot { box-shadow: 3px 4px 0 rgba(0,0,0,.55); }
   .fy-tag { background: #f1ece4; color: #262a33; }
   .fy-text .fy-q { color: #8ea6ff; }
+  .fy-text .fy-m { color: #fdba74; }
+  .fy-mark { color: #f1ece4; }
   .fy-dots i { background: #4a4f5a; } .fy-dots i.on { background: #f1ece4; }
   .fy-menu h6, .fy-menu p { color: #9a948a; }
   .fy-react { border-top-color: rgba(241,236,228,.25); }
@@ -123,8 +148,8 @@ const FISH_SVG = `<svg viewBox="0 0 120 100" aria-hidden="true"><ellipse cx="58"
  * @param {HTMLElement} host 放大肥鱼的容器（铺满可活动的区域）
  * @param {{
  *   loadMoments: (fresh?: boolean) => Promise<{ moments: any[], days?: number, report?: any[] } | null>,
- *   animSrc: (name: string) => Promise<string|null>,
- *   hasAnim: () => boolean,
+ *   figureSrc: (name: string) => Promise<string|null>,   // 表情图的地址（FIGURES 里的名字），没有就 null
+ *   fontSrc?: string,                                  // 气泡字体（woff2）
  *   prefs: { get(): any, set(patch: any): void },
  *   size?: number,
  *   menuExtras?: () => { label: string, onClick: () => void }[],
@@ -133,34 +158,59 @@ const FISH_SVG = `<svg viewBox="0 0 120 100" aria-hidden="true"><ellipse cx="58"
  * }} opts
  */
 export function createPet(host, opts) {
-  const size = opts.size || 200
+  const size = opts.size || 200                       // 高
+  const SW = Math.round(size * (opts.aspect || 1))   // 宽（立绘是竖的）
   const doc = host.ownerDocument
   if (!doc.getElementById('fy-style')) {
-    const st = doc.createElement('style'); st.id = 'fy-style'; st.textContent = CSS; doc.head.appendChild(st)
+    const font = opts.fontSrc ? `@font-face { font-family: "XBB Rounded"; src: url("${opts.fontSrc}") format("woff2"); font-display: swap; }\n` : ''
+    const st = doc.createElement('style'); st.id = 'fy-style'; st.textContent = font + CSS; doc.head.appendChild(st)
   }
   const root = doc.createElement('div'); root.className = 'fy-root'; host.appendChild(root)
-  const pet = doc.createElement('div'); pet.className = 'fy-pet'; pet.style.width = pet.style.height = size + 'px'; pet.title = '戳一下；抓起来甩；右键有菜单'
+  const pet = doc.createElement('div'); pet.className = 'fy-pet'; pet.style.width = SW + 'px'; pet.style.height = size + 'px'; pet.title = '点一下翻旧账；抓起来甩；右键有菜单'
   const shadow = doc.createElement('div'); shadow.className = 'fy-shadow'
   const body = doc.createElement('div'); body.className = 'fy-body'
   pet.append(shadow, body); root.appendChild(pet)
 
-  let video = null
-  function ensureFigure() {
-    if (opts.hasAnim()) {
-      if (!video) { body.innerHTML = ''; video = doc.createElement('video'); video.muted = true; video.playsInline = true; video.addEventListener('ended', () => { if (!video.loop) idle() }); body.appendChild(video) }
-    } else if (!body.firstChild) body.innerHTML = FISH_SVG
+  // ---------- 形象：PNG + 代码动画 ----------
+  const float = doc.createElement('div'); float.className = 'fy-float'
+  const fig = doc.createElement('div'); fig.className = 'fy-fig'
+  const img = doc.createElement('img'); img.alt = ''; img.draggable = false
+  const mark = doc.createElement('div'); mark.className = 'fy-mark'
+  fig.append(img, mark); float.appendChild(fig); body.appendChild(float)
+  const MARK = { happy: '♪', surprised: '！', sleepy: 'z', shy: '///', sad: '💧', thinking: '…' }
+  const srcs = {}                              // 名字 → 地址（null = 没这张图）
+  let expr = 'normal', exprTimer = 0
+  const ready = Promise.all(FIGURES.map(n => Promise.resolve(opts.figureSrc(n)).catch(() => null).then(u => { srcs[n] = u })))
+  const srcOf = n => srcs[n] || srcs.normal
+  function show(n) { const u = srcOf(n); if (u) { if (img.getAttribute('src') !== u) img.src = u } else if (!fig.querySelector('svg')) { img.remove(); fig.insertAdjacentHTML('afterbegin', FISH_SVG) } }
+  /** 换表情：有这张表情图就换图；没有就用 normal 图 + 代码画的漫画符号和动作。ms 后回到 normal（0 = 保持到下次换） */
+  function setExpr(name, ms = 0) {
+    clearTimeout(exprTimer)
+    expr = name in MARK || name === 'normal' ? name : 'normal'
+    float.className = 'fy-float' + (expr !== 'normal' && !srcs[expr] ? ' fy-e-' + expr : '')
+    mark.textContent = expr === 'shy' ? '' : MARK[expr] || ''
+    show(expr)
+    if (ms) exprTimer = setTimeout(() => setExpr('normal'), ms)
   }
-  async function playAnim(name, loop = false) {
-    ensureFigure(); if (!video) return
-    const u = (await opts.animSrc(name)) || (loop ? null : await opts.animSrc('poke')); if (!u) return
-    video.loop = loop; video.src = u; video.play().catch(() => {})
+  const playAnim = (anim, ms = 0) => setExpr(EXPR[anim] || 'normal', ms)
+  const idle = () => setExpr('normal')
+  // 眨眼：只在 normal 时眨，每 2.5～6 秒一次，偶尔连眨两下
+  let blinkTimer = 0
+  function blink() {
+    blinkTimer = setTimeout(() => {
+      if (expr === 'normal' && srcs.blink && !dragging) {
+        show('blink'); setTimeout(() => { if (expr === 'normal') show('normal') }, 130)
+        if (Math.random() < 0.2) setTimeout(() => { if (expr === 'normal') { show('blink'); setTimeout(() => { if (expr === 'normal') show('normal') }, 110) } }, 280)
+      }
+      blink()
+    }, 2500 + Math.random() * 3500)
   }
-  const idle = () => playAnim('idle', true)
+  ready.then(() => { show(expr); blink() })
 
   // ---------- 物理 ----------
   const W = () => host.clientWidth, H = () => host.clientHeight
   const p0 = opts.prefs.get()
-  let x = p0.x >= 0 ? p0.x : W() - size - 24, y = p0.y >= 0 ? p0.y : H() - size   // 左上角
+  let x = p0.x >= 0 ? p0.x : W() - SW - 24, y = p0.y >= 0 ? p0.y : H() - size   // 左上角
   let vx = 0, vy = 0, raf = 0, last = 0, onFloor = false
   let dragging = null
   const floor = () => H() - size
@@ -179,7 +229,7 @@ export function createPet(host, opts) {
     if (dragging) { raf = requestAnimationFrame(step); return }
     vy += G * dt
     x += vx * dt; y += vy * dt
-    const maxX = W() - size
+    const maxX = W() - SW
     if (x < 0) { x = 0; vx = -vx * BOUNCE; squash(0.86, 1.1) }
     if (x > maxX) { x = maxX; vx = -vx * BOUNCE; squash(0.86, 1.1) }
     if (y < 0) { y = 0; vy = -vy * BOUNCE }
@@ -223,11 +273,11 @@ export function createPet(host, opts) {
     if (!(e.buttons & 1)) return endDrag(e, true)        // 松手事件丢了：别让它跟着鼠标跑
     const dx = e.clientX - d.sx, dy = e.clientY - d.sy
     if (!d.moved && Math.hypot(dx, dy) < 6) return
-    if (!d.moved) { d.moved = true; pet.classList.add('drag'); hideBubble(); thinking = null; closeMenu(); playAnim('drag', true) }
+    if (!d.moved) { d.moved = true; pet.classList.add('drag'); hideBubble(); thinking = null; closeMenu(); playAnim('drag') }
     d.hist.push([e.clientX, e.clientY, performance.now()]); if (d.hist.length > 8) d.hist.shift()
     const [ax, , at] = d.hist[0]
     const v = (e.clientX - ax) / Math.max(1, performance.now() - at) * 1000
-    x = clamp(d.ox + dx, 0, W() - size); y = clamp(d.oy + dy, 0, floor())
+    x = clamp(d.ox + dx, 0, W() - SW); y = clamp(d.oy + dy, 0, floor())
     place(clamp(v * 0.015, -25, 25))
   })
   pet.addEventListener('pointerup', e => endDrag(e, false))
@@ -259,10 +309,10 @@ export function createPet(host, opts) {
   function positionBubble() {
     if (!bubble) return
     const bw = bubble.offsetWidth, bh = bubble.offsetHeight
-    const cx = x + size / 2
+    const cx = x + SW / 2
     const left = clamp(cx - bw / 2, 6, W() - bw - 6)
     const up = y - bh - 12 > 6
-    const top = up ? y + size * 0.12 - bh - 12 : y + size + 10
+    const top = up ? y + size * 0.04 - bh - 8 : y + size + 10
     bubble.classList.toggle('up', up); bubble.classList.toggle('down', !up)
     bubble.style.transform = `translate(${left}px, ${Math.max(6, top)}px)`
     const tx = clamp(cx - left, 18, bw - 18)
@@ -278,34 +328,31 @@ export function createPet(host, opts) {
   function say(line) {
     hideBubble()
     thinking = null
-    const parts = beats(line.text)
+    const rs = rounds(line.text), parts = rs.map(r => r.text)
     const b = doc.createElement('div'); b.className = 'fy-bubble up'
-    b.innerHTML = (line.tag ? `<div class="fy-tag${line.priv ? ' priv' : ''}">${esc(line.tag)}</div>` : '') + '<div class="fy-text"></div>' + (parts.length > 1 ? `<div class="fy-dots">${parts.map(() => '<i></i>').join('')}</div>` : '')
+    b.innerHTML = (line.tag ? `<div class="fy-tag${line.priv ? ' priv' : ''}">${esc(line.tag)}</div>` : '') + '<div class="fy-text"></div>'
     root.appendChild(b); bubble = b
     const textEl = b.querySelector('.fy-text')
+    const html = (k, s) => `<div${rs[k].who === 'master' ? ' class="fy-m"' : ''}>${paint(s)}</div>`
     // 先用全文撑出最终大小再定位，打字时气泡不抖
-    textEl.textContent = parts.join(''); b.style.width = Math.min(300, Math.max(line.react ? 250 : 120, b.offsetWidth)) + 'px'
-    textEl.textContent = ''
+    textEl.innerHTML = rs.map((r, k) => html(k, r.text)).join(''); b.style.width = Math.min(300, Math.max(line.react ? 250 : 120, b.offsetWidth)) + 'px'
+    textEl.innerHTML = ''
     positionBubble()
     const t = talk = { i: 0, typed: '', full: false, timer: 0 }
-    const dots = [...b.querySelectorAll('.fy-dots i')]
-    const show = (s) => { textEl.innerHTML = paint(s); positionBubble() }
+    if (line.anim) playAnim(line.anim)
+    const paintTo = (s) => { textEl.innerHTML = parts.slice(0, t.i).map((p, k) => html(k, p)).join('') + html(t.i, s); positionBubble() }
     function startBeat() {
       if (talk !== t) return
-      const isLast = t.i === parts.length - 1
-      if (isLast && line.anim) playAnim(line.anim)
-      dots.forEach((d, k) => d.classList.toggle('on', k <= t.i))
-      const before = parts.slice(0, t.i).join('')
       const target = parts[t.i]
       let n = 0
       t.full = false
       const tick = () => {
         if (talk !== t) return
         n++
-        show(before + [...target].slice(0, n).join(''))
+        paintTo([...target].slice(0, n).join(''))
         if (n < [...target].length) { t.timer = setTimeout(tick, TYPE_MS) } else beatDone()
       }
-      t.finish = () => { clearTimeout(t.timer); show(before + target); beatDone() }
+      t.finish = () => { clearTimeout(t.timer); paintTo(target); beatDone() }
       tick()
     }
     function beatDone() {
@@ -313,8 +360,8 @@ export function createPet(host, opts) {
       t.full = true
       const isLast = t.i === parts.length - 1
       if (isLast && line.react) addReactions(b, line.react)
-      const read = Math.max(isLast ? (line.react ? 9000 : 3500) : 900, [...parts[t.i]].length * (isLast ? 110 : 45))
-      t.timer = setTimeout(() => { if (isLast) hideBubble(); else { t.i++; startBeat() } }, read)
+      const read = Math.max(isLast ? (line.react ? 9000 : 3500) : 700, [...parts[t.i]].length * (isLast ? 110 : 40))
+      t.timer = setTimeout(() => { if (isLast) { hideBubble(); idle() } else { t.i++; startBeat() } }, read)
     }
     // 鼠标停在气泡上就别收（在犹豫点哪个反应）
     b.addEventListener('pointerenter', () => { if (talk === t && t.full && t.i === parts.length - 1) clearTimeout(t.timer) })
@@ -329,13 +376,12 @@ export function createPet(host, opts) {
     startBeat()
   }
 
-  /** 说完后底下那一排：👍 👎 + 两个这一类专属的反应。点了大肥鱼接一句；👍👎 记下来，以后这一类多说 / 少说。 */
+  /** 说完后底下那一排 3 个：两个这一类专属的反应（点了它接一句）+「再翻一件」。 */
   function addReactions(b, m) {
     const row = doc.createElement('div'); row.className = 'fy-react'
     const opts2 = [
-      ['👍', '这种好玩', () => { vote(m.kind, 1); say({ text: pick(REPLY.up), anim: 'cheer' }) }],
-      ['👎', '这种没意思', () => { vote(m.kind, -1); say({ text: pick(REPLY.down), anim: 'sigh' }) }],
-      ...shuffle(REACT[m.kind] || REACT.work).slice(0, 2).map(r => [r.label, null, () => r.replies.length ? say({ text: pick(r.replies), anim: r.anim }) : poke()]),
+      ...shuffle((REACT[m.kind] || REACT.work).filter(r => r.replies.length)).slice(0, 2).map(r => [r.label, null, () => say({ text: pick(r.replies), anim: r.anim })]),
+      ['再翻一件', null, () => poke()],
     ]
     for (const [label, title, fn] of opts2) {
       const btn = doc.createElement('button'); btn.textContent = label; if (title) { btn.title = title; btn.className = 'emo' }
@@ -389,7 +435,7 @@ export function createPet(host, opts) {
     vy = -620; vx = 0; squash(1.12, 0.86, 90); kick()
     const me = thinking = { nags: 0 }
     thinkBubble(pick(REPLY.think))
-    playAnim('file')
+    setExpr('thinking')
     const wait = new Promise(r => setTimeout(r, 700 + Math.random() * 600))
     const d = data || await load()
     await wait
@@ -443,24 +489,23 @@ export function createPet(host, opts) {
 
   function fold() {
     hideBubble(); pet.style.display = 'none'
-    folded = doc.createElement('button'); folded.className = 'fy-dot'; folded.textContent = '🐟'; folded.title = '把大肥鱼叫回来'
-    folded.style.left = clamp(x + size - 44, 0, W() - 40) + 'px'; folded.style.top = clamp(y + size - 44, 0, H() - 40) + 'px'
+    folded = doc.createElement('button'); folded.className = 'fy-dot'; folded.textContent = '🐳'; folded.title = '把小本本叫回来'
+    folded.style.left = clamp(x + SW - 44, 0, W() - 40) + 'px'; folded.style.top = clamp(y + size - 44, 0, H() - 40) + 'px'
     folded.onclick = () => { folded.remove(); folded = null; pet.style.display = ''; opts.prefs.set({ folded: false }); idle() }
     root.appendChild(folded); opts.prefs.set({ folded: true })
   }
 
-  const onResize = () => { x = clamp(x, 0, W() - size); y = clamp(y, 0, floor()); place(); kick() }
+  const onResize = () => { x = clamp(x, 0, W() - SW); y = clamp(y, 0, floor()); place(); kick() }
   const win = doc.defaultView
   win.addEventListener('resize', onResize)
 
-  ensureFigure(); place(); idle(); kick()
+  place(); kick()
   if (p0.folded) fold()
 
   return {
-    refreshFigure() { video = null; body.innerHTML = ''; ensureFigure(); idle() },
     say, poke,
     destroy() {
-      cancelAnimationFrame(raf); hideBubble(); closeMenu(); win.removeEventListener('resize', onResize); doc.removeEventListener('pointerdown', onDocDown, true); root.remove()
+      cancelAnimationFrame(raf); clearTimeout(blinkTimer); clearTimeout(exprTimer); hideBubble(); closeMenu(); win.removeEventListener('resize', onResize); doc.removeEventListener('pointerdown', onDocDown, true); root.remove()
     },
   }
 }

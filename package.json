@@ -13,6 +13,7 @@
     "src/**/*.js",
     "!src/client",
     "desktop/**",
+    "assets/**",
     "lib/client.js",
     "cordis.patch.yml",
     "README.md",

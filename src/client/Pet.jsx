@@ -1,11 +1,11 @@
 /**
- * 大肥鱼（dsh 网页里那只）：挂在 shell.overlay（全应用浮层，默认点不到，引擎自己给大肥鱼打开 pointer-events）。
- * 手感、说话、菜单都在 src/shared/pet-engine.js（和桌面版共用）；这里只接 dsh：取台词、取动画、记偏好、「放到桌面上」。
+ * 小本本（dsh 网页里那只）：挂在 shell.overlay（全应用浮层，默认点不到，引擎自己给它打开 pointer-events）。
+ * 手感、说话、表情、菜单都在 src/shared/pet-engine.js（和桌面版共用）；这里只接 dsh：取台词、立绘和字体的地址、记偏好、「放到桌面上」。
  * 放到桌面上之后网页里这只就藏起来，免得两只。
  */
 import { useEffect, useRef } from 'react'
 import { call } from './api.js'
-import { createPet } from '../shared/pet-engine.js'
+import { createPet, FIGURES } from '../shared/pet-engine.js'
 
 const LS = 'dsh-xiaobenben.pet'
 const prefs = {
@@ -13,33 +13,32 @@ const prefs = {
   set(patch) { try { localStorage.setItem(LS, JSON.stringify({ ...prefs.get(), ...patch })) } catch {} },
 }
 
-/** 动画：fetch 成 blob（带上 dsh 的鉴权），按名字缓存 */
-const blobs = new Map()
-function animSrc(name) {
-  if (!blobs.has(name)) {
-    blobs.set(name, fetch(`api/xiaobenben.anim?k=${encodeURIComponent(name)}`, { credentials: 'same-origin' })
-      .then(r => (r.ok ? r.blob() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then(b => URL.createObjectURL(b))
-      .catch(err => { console.warn('[dsh-xiaobenben] 动画取不到', name, err); blobs.delete(name); return null }))
+const asset = k => `api/xiaobenben.asset?k=${encodeURIComponent(k)}`
+/** 表情图：先 HEAD 一下，有才用（没有的表情由引擎用代码画） */
+const seen = new Map()
+function figureSrc(name) {
+  if (!FIGURES.includes(name)) return Promise.resolve(null)
+  if (!seen.has(name)) {
+    const u = asset(`xiaobenben/${name}.png`)
+    seen.set(name, fetch(u, { method: 'GET', credentials: 'same-origin' }).then(r => (r.ok ? u : null)).catch(() => null))
   }
-  return blobs.get(name)
+  return seen.get(name)
 }
 
 export function Pet() {
   const ref = useRef(null)
   useEffect(() => {
     const host = ref.current
-    let anims = false
     let engine = null
     const syncDesktop = d => { host.style.display = d?.desktop?.on ? 'none' : '' }
-    const syncAnims = d => { if (d && !!d.anims?.length !== anims) { anims = !!d.anims?.length; engine?.refreshFigure() } }
     engine = createPet(host, {
-      size: 260,
+      size: 300,
+      aspect: 308 / 600,
       prefs,
-      hasAnim: () => anims,
-      animSrc,
-      loadMoments: fresh => call('moments', { fresh }).then(d => { syncAnims(d); return d }).catch(e => { console.warn('[dsh-xiaobenben] 取台词失败', e); return null }),
-      note: d => d ? `最近 ${d.days} 天 · ${d.report.map(r => `${r.id === 'dsh' ? 'dsh' : 'Claude Code'} ${r.sessions ?? 0} 个会话`).join(' · ')} · ${d.moments.length} 句。` : '',
+      figureSrc,
+      fontSrc: asset('fonts/xbb-rounded.woff2'),
+      loadMoments: fresh => call('moments', { fresh }).catch(e => { console.warn('[dsh-xiaobenben] 取台词失败', e); return null }),
+      note: d => d ? `最近 ${d.days} 天 · ${d.report.map(r => `${r.id === 'dsh' ? 'dsh' : 'Claude Code'} ${r.sessions ?? 0} 个会话`).join(' · ')} · ${d.moments.length} 件。` : '',
       menuExtras: () => [{
         label: '放到桌面上（关了网页也在）',
         onClick: () => {
@@ -51,7 +50,6 @@ export function Pet() {
         },
       }],
     })
-    call('moments', {}).then(syncAnims).catch(() => {})
     const poll = () => call('desktop', {}).then(syncDesktop).catch(() => {})
     poll()
     const t = setInterval(poll, 5000)       // 桌面那只「回到网页里」之后，这边要再出来
