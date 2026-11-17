@@ -284,7 +284,7 @@ export function createPet(host, opts) {
   const p0 = opts.prefs.get()
   let x = p0.x >= 0 ? p0.x : W() - SW - 24, y = p0.y >= 0 ? p0.y : H() - size   // 左上角
   let vx = 0, vy = 0, raf = 0, last = 0, onFloor = false
-  let dragging = null, dragTalk = 0, flung = false
+  let dragging = null, dragTalk = 0, flung = false, flingSpeed = 0
   const floor = () => H() - size
   function place(tilt = 0) {
     pet.style.transform = `translate(${x}px, ${y}px)` + (tilt ? ` rotate(${tilt}deg)` : '')
@@ -310,7 +310,7 @@ export function createPet(host, opts) {
       const hit = vy
       if (hit > 260) {
         vy = -hit * BOUNCE; vx *= FRICTION; squash(1.18, 0.8)
-        if (flung) { flung = false; say({ text: pickLine(LINES.land), anim: 'land', rate: '落地' }) }
+        if (flung) { flung = false; const l = landLine(flingSpeed); say({ text: l.text, anim: 'land', rate: l.rate }) }
         else if (!bubble && (expr === 'normal' || expr === 'land')) setExpr('land', 700)
       } else if (flung && onFloor) flung = false
       else { vy = 0; vx *= 0.8 }
@@ -374,6 +374,7 @@ export function createPet(host, opts) {
     } else { vx = 0; vy = 0 }
     opts.prefs.set({ x, y })
     const fast = Math.hypot(vx, vy) > 700
+    flingSpeed = Math.hypot(vx, vy)
     flung = fast || y < floor() - 120                                  // 甩出去 / 从高处松手：落地时说一句
     if (fast) say({ text: pickLine(LINES.fling), anim: 'drag', rate: '被甩' })
     else if (bubble && talk?.full && talk.line?.rate && !bubble.querySelector('.fy-rate')) {   // 慢慢放下：拎着时说的那句留着，补上 👍 👎
@@ -395,8 +396,9 @@ export function createPet(host, opts) {
     if (!d.moved && Math.hypot(dx, dy) < 6) return
     if (!d.moved) {
       d.moved = true; pet.classList.add('drag'); thinking = null; flipStop(); closeMenu()
-      say({ text: pickLine(LINES.drag), anim: 'drag', rate: '被拎起' })                     // 被拎起来要说一句；拎久了每 4 秒再抱怨一句
-      clearInterval(dragTalk); dragTalk = setInterval(() => { if (dragging) say({ text: pickLine(LINES.dragLong), anim: 'drag', rate: '拎太久' }) }, 4000)
+      ctx.before = Date.now() < sulkUntil ? 'sulk' : walking ? 'walk' : expr === 'sleep' || expr === 'sit' ? expr : bubble && talk?.line?.react ? 'talk' : null
+      const pl = pickUpLine(); say({ text: pl.text, anim: 'drag', rate: pl.rate })                     // 被拎起来要说一句；拎久了每 4 秒再抱怨一句
+      clearInterval(dragTalk); const me = d; const iv = dragTalk = setInterval(() => { if (dragging === me) say({ text: pickLine(LINES.dragLong), anim: 'drag', rate: '拎太久' }); else clearInterval(iv) }, 4000)   // 只认这一次拖
     }
     d.hist.push([e.clientX, e.clientY, performance.now()]); if (d.hist.length > 8) d.hist.shift()
     const [ax, , at] = d.hist[0]
@@ -434,8 +436,41 @@ export function createPet(host, opts) {
   function rateLine(what, text, d) {
     if (d) fb.lines[text] = d; else delete fb.lines[text]
     logFb(what, text, d); saveFb()
+    if (d) noteAct({ type: 'rate', d })
   }
   const pickLine = list => pickRated(list, fb)
+  // 刚才发生了什么：主人最后点了什么、她最后翻到哪类旧账、今天被扔几次。拖 / 甩 / 落地时说的话扣着这个
+  const ctx = { act: null, moment: null, throws: [], before: null }
+  const noteAct = a => { ctx.act = { ...a, t: Date.now() } }
+  const fresh = o => o && Date.now() - o.t < 3 * 60e3
+  const fillCtx = (t, v) => t.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? '')
+  /** 落地说什么：刚才的事 > 刚翻的旧账 > 今天扔了好多次 / 半夜 / 扔得狠（各一定概率）> 一般的 */
+  function landLine(speed) {
+    const C = LINES.ctx, a = fresh(ctx.act) ? ctx.act : null, m = fresh(ctx.moment) ? ctx.moment : null
+    const day = new Date().toDateString(); ctx.throws = ctx.throws.filter(d => d === day); ctx.throws.push(day)
+    const n = ctx.throws.length, h = new Date().getHours()
+    const opts2 = [
+      a?.type === 'vote' && a.d < 0 && ['land_down', { kind: KIND[a.kind] || '那一' }],
+      a?.type === 'vote' && a.d > 0 && ['land_up', {}],
+      a?.type === 'rate' && a.d < 0 && ['land_rate_down', {}],
+      a?.type === 'rate' && a.d > 0 && ['land_rate_up', {}],
+      a?.type === 'chat' && ['land_chat', { label: a.label }],
+      a?.type === 'sulk' && ['land_sulk', {}],
+      m && C['land_' + m.kind] && ['land_' + m.kind, {}],
+      n >= 3 && Math.random() < 0.6 && ['land_many', { n }],
+      speed > 1500 && Math.random() < 0.5 && ['land_hard', {}],
+      h < 5 && Math.random() < 0.4 && ['land_night', {}],
+    ].filter(Boolean)
+    if (a) ctx.act = null                                  // 一件事只拿来说一次
+    if (!opts2.length) return { text: pickLine(LINES.land), rate: '落地' }
+    const [k, v] = opts2[0]
+    return { text: fillCtx(pickLine(C[k]), v), rate: '落地·' + k.slice(5) }
+  }
+  function pickUpLine() {
+    const C = LINES.ctx, b = ctx.before
+    const k = b === 'sleep' ? 'pick_sleep' : b === 'sit' ? 'pick_sit' : b === 'walk' ? 'pick_walk' : b === 'talk' ? 'pick_talk' : b === 'sulk' ? 'pick_sulk' : null
+    return k ? { text: pickLine(C[k]), rate: '被拎起·' + k.slice(5) } : { text: pickLine(LINES.drag), rate: '被拎起' }
+  }
   let bubble = null, talk = null
   function load(fresh = false) {
     if (inflight && !fresh) return inflight
@@ -575,6 +610,7 @@ export function createPet(host, opts) {
         e.stopPropagation()
         remember(recent.labels, label, 8)
         fb.clicks[label] = (fb.clicks[label] || 0) + 1; logFb('聊天按钮', label, 1); saveFb()
+        noteAct({ type: 'chat', label })
         const left = replies.filter(r => !recent.replies.includes(r))
         const text = pick(left.length ? left : replies)
         remember(recent.replies, text, 30)
@@ -595,6 +631,7 @@ export function createPet(host, opts) {
     fb.kinds[m.kind] = d > 0 ? [cur[0] + 1, cur[1]] : [cur[0], cur[1] + 1]
     if (d) fb.lines[m.text] = d                      // 这一件本身也记：👎 的不再翻出来
     logFb('旧账·' + (KIND[m.kind] || m.kind), m.text, d); saveFb()
+    noteAct({ type: 'vote', d, kind: m.kind })
     for (const k in queues) delete queues[k]       // 下一轮按新口味重新排
   }
 
@@ -618,7 +655,7 @@ export function createPet(host, opts) {
     if (now < sulkUntil) { squash(0.9, 1.08, 120); if (!bubble) say({ text: pick(REPLY.sulk), anim: 'angry' }); return }   // 生气那句还在就别盖掉
     pokes = pokes.filter(t => now - t < 5000); pokes.push(now)
     if (pokes.length >= 5) {
-      pokes = []; sulkUntil = now + 4000
+      pokes = []; sulkUntil = now + 4000; noteAct({ type: 'sulk' })
       vy = -900; squash(0.8, 1.2, 160); kick()
       return say({ text: pick(REPLY.angry), anim: 'angry' })
     }
@@ -665,6 +702,7 @@ export function createPet(host, opts) {
     sayMoment(m)
   }
   function sayMoment(m) {
+    ctx.moment = { kind: m.kind, t: Date.now() }
     const ago = Math.round((Date.now() - m.ts) / 864e5)
     const tag = [KIND[m.kind], m.kind === 'stat' ? null : ago <= 0 ? '今天' : `${ago} 天前`].filter(Boolean).join(' · ')
     say({ text: m.text, tag: m.sensitive.length ? tag + ' · 私事' : tag, priv: m.sensitive.length > 0, anim: m.anim, react: m })
