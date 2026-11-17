@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>戳一下大肥鱼</title>
+<style>
+:root {
+  --bg: #F4F1EA; --bg2: #EAE4D8; --ink: #1F1B16; --soft: #5E574D; --faint: #978E82;
+  --bubble: #FFFFFF; --line: #DDD4C5; --accent: #2F5BEA; --warn: #C9821C; --chip: #FFFFFF;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #15171C; --bg2: #1D2027; --ink: #ECE8E1; --soft: #B5AEA3; --faint: #7D776E;
+    --bubble: #232731; --line: #343946; --accent: #7C9BFF; --warn: #E3A548; --chip: #232731; }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: radial-gradient(1200px 600px at 50% 110%, var(--bg2), var(--bg));
+  color: var(--ink); font: 16px/1.6 -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  display: flex; flex-direction: column; align-items: center; overflow-x: hidden;
+}
+.stage { flex: 1; width: 100%; max-width: 760px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding: 24px 16px 0; }
+.bubble {
+  position: relative; background: var(--bubble); border: 1px solid var(--line); border-radius: 22px;
+  padding: 20px 24px 16px; max-width: 620px; width: 100%; min-height: 96px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.08); white-space: pre-line;
+  transform-origin: 50% 100%; transition: opacity .18s, transform .18s;
+}
+.bubble::after { content: ""; position: absolute; left: 50%; bottom: -10px; width: 18px; height: 18px; background: var(--bubble);
+  border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); transform: translateX(-50%) rotate(45deg); }
+.bubble.hide { opacity: 0; transform: scale(.94) translateY(6px); }
+.say { font-size: 19px; line-height: 1.75; }
+.meta { margin-top: 10px; font-size: 13px; color: var(--faint); display: flex; gap: 10px; flex-wrap: wrap; }
+.tag { color: var(--accent); }
+.tag.priv { color: var(--warn); }
+.pet { margin-top: 10px; width: 340px; height: 340px; max-width: 80vw; max-height: 80vw; cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; position: relative; }
+.pet video { width: 100%; height: 100%; object-fit: contain; display: block; }
+.pet .fallback { width: 100%; height: 100%; display: grid; place-items: center; font-size: 120px; }
+.pet:active { transform: scale(.97); }
+.hint { font-size: 13px; color: var(--faint); margin: 2px 0 10px; }
+.bar { width: 100%; max-width: 760px; padding: 12px 16px 20px; display: flex; flex-direction: column; gap: 10px; align-items: center; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.chip { border: 1px solid var(--line); background: var(--chip); color: var(--soft); border-radius: 999px; padding: 6px 14px; font: inherit; font-size: 14px; cursor: pointer; }
+.chip[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.chip .n { color: var(--faint); font-size: 12px; margin-left: 4px; }
+.row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; justify-content: center; font-size: 13px; color: var(--faint); }
+.row label { display: flex; gap: 6px; align-items: center; cursor: pointer; color: var(--soft); }
+.foot { font-size: 12px; color: var(--faint); text-align: center; max-width: 620px; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="bubble" id="bubble">
+    <div class="say" id="say">主人好。戳本鱼一下，本鱼跟你讲讲这阵子替你干了些什么。</div>
+    <div class="meta" id="meta"></div>
+  </div>
+  <div class="pet" id="pet" title="戳一下（或按空格）" role="button" tabindex="0" aria-label="戳一下大肥鱼"></div>
+  <div class="hint" id="hint">戳一下 · 空格也行</div>
+</div>
+<div class="bar">
+  <div class="chips" id="chips"></div>
+  <div class="row">
+    <label><input type="checkbox" id="priv" checked> 藏起私事（健康、感情、成绩、家庭）</label>
+    <span id="count"></span>
+  </div>
+  <div class="foot" id="foot"></div>
+</div>
+<script>
+const DATA = /*DATA*/null;
+const M = DATA.moments;
+const KIND = { work: '干活', late: '深夜', report: '汇报', sorry: '认错', complain: '挨骂', caught: '被抓包', stopped: '被喊停', stat: '总账' };
+const MODES = [
+  ['all', '随便', () => true],
+  ['week', '最近一周', m => Date.now() - m.ts < 7 * 864e5],
+  ['hour', '这个钟点', m => Math.abs(m.hour - new Date().getHours()) <= 1 || Math.abs(m.hour - new Date().getHours()) >= 23],
+  ['drama', '挨骂与认错', m => ['sorry', 'complain', 'caught', 'stopped'].includes(m.kind)],
+  ['work', '干活与汇报', m => ['work', 'late', 'report'].includes(m.kind)],
+  ['stat', '总账', m => m.kind === 'stat'],
+];
+let mode = 'all';
+try { mode = localStorage.getItem('pop.mode') || 'all' } catch {}
+const $ = id => document.getElementById(id);
+const priv = $('priv');
+
+// ---- 形象 ----
+const anims = new Set(DATA.meta.anims);
+const pet = $('pet');
+let video = null;
+if (anims.has('idle')) {
+  video = document.createElement('video');
+  video.muted = true; video.playsInline = true; video.autoplay = true;
+  pet.appendChild(video);
+  video.addEventListener('ended', () => { if (!video.loop) idle() });
+  idle();
+} else {
+  pet.innerHTML = '<div class="fallback">🐳</div>';
+}
+function play(name) {
+  if (!video) return;
+  const k = anims.has(name) ? name : 'poke';
+  video.loop = false; video.src = 'anim/' + k + '.webm'; video.play().catch(() => {});
+}
+function idle() { if (!video) return; video.loop = true; video.src = 'anim/idle.webm'; video.play().catch(() => {}); }
+
+// ---- 抽句子：每种模式一个洗好的队列，翻完再洗 ----
+const queues = {};
+function pool() {
+  const f = MODES.find(x => x[0] === mode)[2];
+  return M.filter(m => f(m) && (!priv.checked || !m.sensitive.length));
+}
+function nextMoment() {
+  const key = mode + (priv.checked ? '1' : '0');
+  if (!queues[key] || !queues[key].length) {
+    const p = pool().slice();
+    for (let i = p.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [p[i], p[j]] = [p[j], p[i]] }
+    queues[key] = p;
+  }
+  return queues[key].pop();
+}
+let busy = false;
+function poke() {
+  if (busy) return; busy = true;
+  const m = nextMoment();
+  const b = $('bubble');
+  b.classList.add('hide');
+  setTimeout(() => {
+    if (!m) {
+      $('say').textContent = '这个分类里本鱼想不起来什么了……换一个试试？';
+      $('meta').textContent = '';
+      play('poke');
+    } else {
+      $('say').textContent = m.text;
+      const d = new Date(m.ts);
+      $('meta').innerHTML = '';
+      const tag = document.createElement('span'); tag.className = 'tag'; tag.textContent = KIND[m.kind] || m.kind;
+      $('meta').append(tag);
+      if (m.sensitive.length) { const t = document.createElement('span'); t.className = 'tag priv'; t.textContent = '私事：' + m.sensitive.join('、'); $('meta').append(t) }
+      const ago = Math.round((Date.now() - m.ts) / 864e5);
+      const s = document.createElement('span'); s.textContent = m.kind === 'stat' ? '' : (ago <= 0 ? '今天' : ago + ' 天前');
+      $('meta').append(s);
+      play(m.anim);
+    }
+    b.classList.remove('hide');
+    busy = false;
+  }, 160);
+}
+pet.addEventListener('click', poke);
+document.addEventListener('keydown', e => { if (e.code === 'Space' && e.target.tagName !== 'INPUT') { e.preventDefault(); poke() } });
+
+// ---- 分类按钮 ----
+function renderChips() {
+  const box = $('chips'); box.innerHTML = '';
+  for (const [k, label, f] of MODES) {
+    const n = M.filter(m => f(m) && (!priv.checked || !m.sensitive.length)).length;
+    const b = document.createElement('button');
+    b.className = 'chip'; b.setAttribute('aria-pressed', String(k === mode));
+    b.textContent = label; const s = document.createElement('span'); s.className = 'n'; s.textContent = n; b.append(s);
+    b.onclick = () => { mode = k; try { localStorage.setItem('pop.mode', k) } catch {} renderChips(); poke() };
+    box.append(b);
+  }
+  $('count').textContent = `一共 ${M.length} 句，藏起 ${M.filter(m => m.sensitive.length).length} 句私事`;
+}
+priv.addEventListener('change', renderChips);
+renderChips();
+$('foot').textContent = `材料：最近 ${DATA.meta.days} 天 Claude Code 的 ${DATA.meta.sessions} 个会话、${DATA.meta.turns} 轮。都在本机算，不联网、不调模型。一碗白饭 = ${DATA.meta.rice / 1e4} 万 token，换算着玩的。形象来自 dsh-pet（MIT）。`;
+</script>
+</body>
+</html>

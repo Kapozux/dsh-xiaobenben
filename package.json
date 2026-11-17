@@ -1,0 +1,67 @@
+{
+  "name": "dsh-xiaobenben",
+  "version": "0.1.0",
+  "description": "小本本：在 DeepSeek Harness 里做 agent 年度回顾（统计和原话在本机算，AI 部分点了才跑、先报价，导出分享图），以及「翻旧账」——一次说一件你和 agent 一起干过的真事，装了 dsh-pet 可以让它亲口说。",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src/**/*.js",
+    "!src/client",
+    "lib/client.js",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "build": "tsdown --config tsdown.client.config.js",
+    "test": "TZ=Asia/Taipei node --test \"tests/*.test.js\"",
+    "prepack": "npm run build",
+    "check:local": "node scripts/check-local.mjs"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "year-in-review",
+    "agent"
+  ],
+  "author": "Kapozux",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Kapozux/dsh-xiaobenben.git"
+  },
+  "homepage": "https://github.com/Kapozux/dsh-xiaobenben#readme",
+  "bugs": "https://github.com/Kapozux/dsh-xiaobenben/issues",
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.4"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-llm": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-session-query": "0.2.0-rc.2",
+    "react": "^18.2.0"
+  },
+  "devDependencies": {
+    "react": "^18.3.1",
+    "tsdown": "^0.23.7"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-slots"
+      ]
+    }
+  }
+}
