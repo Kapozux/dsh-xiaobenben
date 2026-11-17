@@ -112,8 +112,9 @@ test('800 条对话版模板全部过检查：必须的占位符各一次、填�
 test('按类型挑模板：缺值的跳过，太长换下一条，都不行就不说', () => {
   const out = say('complain', 'x', { w: '10 月 3 日中午' }, { said: '你到底行不行' })
   assert.match(out, /「你到底行不行」/)
-  assert.ok(TPL.complain.some(t => fill(t, { w: '10 月 3 日中午', said: '你到底行不行' }) === out))
-  assert.equal(say('complain', 'x', {}, { said: '长'.repeat(80) }), null)
+  assert.match(out, /10 月 3 日中午/)            // 模板没写时间的，前面补上
+  assert.equal(say('complain', 'x', { w: '10 月 3 日中午', about: '合并页' }, { said: '你到底行不行' }).includes('合并页那会儿'), true)
+  assert.equal(say('complain', 'x', {}, { said: '长'.repeat(130) }), null)
 })
 
 test('气泡：一轮一行，去掉「本肥鱼：」「主人：」，主人的话单独标出来', () => {
@@ -150,7 +151,7 @@ test('原话：脏话打成 ××；在空格处截时前面至少两个汉字', 
 })
 
 test('超过上限自动换短模板；全都塞不下就不说', () => {
-  const list = ['这一条特别特别长：{said}，本鱼要把它说完' + '说完'.repeat(30) + '。', '短的：「{said}」']
+  const list = ['这一条特别特别长：{said}，本鱼要把它说完' + '说完'.repeat(60) + '。', '短的：「{said}」']
   for (let i = 0; i < 20; i++) assert.equal(fillFit(list, i, { said: '你说得对是我漏了一个分支呀' }), '短的：「你说得对是我漏了一个分支呀」')
   assert.equal(fillFit([list[0]], 0, { said: '你说得对是我漏了一个分支呀' }), null)
 })

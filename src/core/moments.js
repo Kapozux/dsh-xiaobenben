@@ -154,7 +154,7 @@ const pad = n => String(n).padStart(2, '0')
 export function when(ts) {
   const d = new Date(ts), h = d.getHours()
   const part = h < 5 ? '凌晨' : h < 9 ? '早上' : h < 12 ? '上午' : h < 13 ? '中午' : h < 18 ? '下午' : '晚上'
-  return `${d.getMonth() + 1} 月 ${d.getDate()} 日${part}`
+  return `${d.getMonth() + 1} 月 ${d.getDate()} 日${part} ${clock(ts)}`
 }
 /** 钟点：「1:02」（只有 late 用得上） */
 export const clock = ts => { const d = new Date(ts), h = d.getHours(); return `${h > 12 ? h - 12 : h}:${pad(d.getMinutes())}` }
@@ -181,7 +181,7 @@ function short(s, max = 14) {
 }
 /** 气泡里一句话的长度：不算空格（数字两边的空格是排版用的） */
 export const width = s => len(s.replace(/\s/g, ''))
-export const MAX_WIDTH = 72          // 一段台词最多几个字（不算空格、换行）。对话版一轮一行，自己的气泡放得下
+export const MAX_WIDTH = 110         // 一段台词最多几个字（不算空格、换行）。对话版一轮一行，前面还要交代什么时候、哪件事
 
 /**
  * 任务名压成 10 字以内的话题，不带引号：去客套（帮我把…一下）、去长英文技术词（能留下至少两个汉字时）、去路径。
@@ -264,11 +264,25 @@ export function say(kind, seed, base, ...varsList) {
     for (let i = 0; i < list.length; i++) {
       const t = list[(start + i) % list.length]
       if (NEED(t).some(k => vars[k] === undefined || vars[k] === null || vars[k] === '')) continue
-      const out = fill(t, vars)
+      const out = withContext(t, fill(t, vars), vars)
       if (width(out) <= MAX_WIDTH && !/「[^」]*「/.test(out)) return out
     }
   }
   return null
+}
+/**
+ * 语境：模板自己没交代「什么时候」「哪件事」的，前面补上（「11 月 6 日下午 3:06，合并页那会儿，」）。
+ * 对话体的模板单独起一行交代，再接对话。
+ */
+function withContext(tpl, out, vars) {
+  const about = !tpl.includes('{task}') && vars.about && `${vars.about}那会儿`
+  if (tpl.includes('{w}')) {                  // 模板自己说了时间：「哪件事」紧跟在时间后面
+    return about && vars.w ? out.replace(vars.w, `${vars.w}，${about}`) : out
+  }
+  const bits = [vars.w, about].filter(Boolean)
+  if (!bits.length) return out
+  if (/^(本肥鱼|主人)\s*[：:]/.test(out)) return bits.join('，') + '。\n' + out
+  return bits.join('，') + '，' + out
 }
 
 /** 原话三版：完整（≤20 字）、截短（max 字）、再短（8 字），依次试 */
@@ -320,7 +334,9 @@ export function buildMoments(turns, { since = 0, now = Date.now(), days = null }
   }
 
   for (const tr of real) {
-    const tk = task(tr)
+    const ask = tr.text.split('\n')[0].trim()
+    // 哪件事：压得出话题就用话题；压不出、但这句确实是在派活，就原样引一小段（「帮我看看 Ephemeris 的…」）
+    const tk = task(tr) || (!FILLER.test(ask) && ASK.test(ask) && len(ask) >= 4 && isHuman(ask) ? `「${short(ask, 16)}」` : null)
     const about = tk || prevTask.get(tr)
     const w = when(tr.start)
     const acts = [tr.edited.size && `改了 ${tr.edited.size} 个文件`, tr.commands && `跑了 ${tr.commands} 条命令`, tr.reads >= 10 && `翻了 ${tr.reads} 个文件`, tr.agents && `喊了 ${tr.agents} 个帮手`].filter(Boolean)
@@ -336,7 +352,7 @@ export function buildMoments(turns, { since = 0, now = Date.now(), days = null }
     }
 
     if (tr.interrupted && tr.active >= 60e3 && isHuman(tr.next) && !FILLER.test(tr.next.trim()) && len(tr.next) >= 3 && len(tr.next) <= 40) {
-      add('stopped', tr.end, say('stopped', seed, { w: when(tr.end) }, ...quoteVars({ task: about, dur: dur(tr.active) }, { next: tr.next }, 14)), 'startle', tr.next,
+      add('stopped', tr.end, say('stopped', seed, { w: when(tr.end), about }, ...quoteVars({ task: about, dur: dur(tr.active) }, { next: tr.next }, 14)), 'startle', tr.next,
         { when: w, task: about, dur: dur(tr.active), next: short(tr.next, 20) })
     }
 
@@ -346,21 +362,21 @@ export function buildMoments(turns, { since = 0, now = Date.now(), days = null }
     for (const tx of tr.texts.slice(-3).reverse()) { claim = sentenceWith(tx, DONE, 40); if (claim) { claim = claim.replace(/^[-*#>\s]+/, ''); if ((claim.match(/[\u4e00-\u9fff]/g) || []).length < 2) { claim = null; continue }; break } }
     const nextFirst = (tr.next || '').split('\n')[0].trim()
     if (claim && isHuman(tr.next) && !FILLER.test(nextFirst) && BACKFIRE.test(nextFirst) && len(nextFirst) >= 2 && len(nextFirst) <= 60) {
-      add('caught', tr.start, say('caught', seed, { w }, ...quoteVars({ task: about }, { claim, next: nextFirst }, 12)), 'caught', claim + ' ' + nextFirst,
+      add('caught', tr.start, say('caught', seed, { w, about }, ...quoteVars({ task: about }, { claim, next: nextFirst }, 12)), 'caught', claim + ' ' + nextFirst,
         { when: w, task: about, claim: short(claim, 20), next: short(nextFirst, 20) })
       caughtNext.add(tr.next)
     }
 
     const first = tr.text.split('\n')[0].trim()
     if (COMPLAIN.test(first) && len(first) <= 40 && !caughtNext.has(tr.text)) {     // 已经当成「被抓包」说过的那句不再当挨骂说
-      add('complain', tr.start, say('complain', seed, { w }, ...quoteVars({ task: prevTask.get(tr) }, { said: first }, 14)), 'sigh', first,
+      add('complain', tr.start, say('complain', seed, { w, about: prevTask.get(tr) }, ...quoteVars({ task: prevTask.get(tr) }, { said: first }, 14)), 'sigh', first,
         { when: w, task: prevTask.get(tr), said: short(first, 20) })
     }
 
     for (const tx of tr.texts) {
       const s = sentenceWith(tx, SORRY, 40)
       if (!s) continue
-      add('sorry', tr.start, say('sorry', seed + s, { w }, ...quoteVars({ task: about }, { said: s }, 14)), 'bow', s,
+      add('sorry', tr.start, say('sorry', seed + s, { w, about }, ...quoteVars({ task: about }, { said: s }, 14)), 'bow', s,
         { when: w, task: about, said: short(s, 20) })
       break
     }
@@ -368,7 +384,7 @@ export function buildMoments(turns, { since = 0, now = Date.now(), days = null }
     if (tr.active >= 10 * 60e3 && !tr.interrupted) {
       const s = sentenceWith(lastText, /./, 40)
       if (s && !SORRY.test(s)) {
-        add('report', tr.end, say('report', seed + 'r', { w: when(tr.end) }, ...quoteVars({ task: about, dur: dur(tr.active) }, { said: s }, 14)), 'cheer', s,
+        add('report', tr.end, say('report', seed + 'r', { w: when(tr.end), about }, ...quoteVars({ task: about, dur: dur(tr.active) }, { said: s }, 14)), 'cheer', s,
           { when: when(tr.end), task: about, dur: dur(tr.active), said: short(s, 20) })
       }
     }
