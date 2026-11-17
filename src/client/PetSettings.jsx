@@ -1,63 +1,22 @@
 /**
- * 「翻旧账」一页：一次说一件你和 agent 一起干过的真事（host 的 moments 路由算好的，确定性模板，不调模型）。
- * 装了 dsh-pet 的人还可以右键它 → 更多 → 翻旧账，让它亲口说；这一页是没装 dsh-pet 时的去处，也能看 dsh-pet 那边连没连上。
+ * 设置 → 年度回顾 里的「翻旧账（dsh-pet）」一块：dsh-pet 接没接上，以及「让模型换个说法」的发送确认。
+ * 翻旧账只在桌宠上说（右键 dsh-pet → 更多 → 翻旧账），没有单独的页面。
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { call } from './api.js'
 
-const KIND = { work: '干活', late: '深夜', report: '汇报', sorry: '认错', complain: '挨骂', caught: '被抓包', stopped: '被喊停', stat: '总账' }
-
-export function Recall() {
-  const [data, setData] = useState(null)
-  const [err, setErr] = useState(null)
-  const [cur, setCur] = useState(null)
-  const [priv, setPriv] = useState(true)        // 藏起私事（健康、感情、成绩、家庭）
+export function PetSettings() {
   const [link, setLink] = useState(null)
-  const queue = useRef([])
-
-  const load = useCallback(() => call('moments', {}).then(setData).catch(e => setErr(e.message)), [])
-  useEffect(() => {
-    load()
-    call('petlink', {}).then(setLink).catch(() => {})
-  }, [])
-
-  const next = useCallback(() => {
-    if (!data) return
-    if (!queue.current.length) {
-      queue.current = data.moments.filter(m => !priv || !m.sensitive.length)
-        .map(m => [Math.random(), m]).sort((a, b) => a[0] - b[0]).map(x => x[1])
-    }
-    setCur(queue.current.pop() || null)
-  }, [data, priv])
-  useEffect(() => { queue.current = []; if (data) next() }, [data, priv])   // eslint-disable-line react-hooks/exhaustive-deps
-
-  const ago = cur && Math.round((Date.now() - cur.ts) / 864e5)
+  useEffect(() => { call('petlink', {}).then(setLink).catch(() => {}) }, [])
   return (
-    <div className="ay-recall">
-      <h1>翻旧账</h1>
-      <p className="ay-muted">本肥鱼记得你们一起干过的事。默认在本机按模板说，不调模型；也可以在下面让模型换个说法。</p>
-      {err && <p className="ay-err">读记录失败：{err}</p>}
-      {!data && !err && <p className="ay-muted">本肥鱼在翻记录……第一次要几秒。</p>}
-      {data && !cur && <p className="ay-muted">{data.moments.length ? '这一类没有可说的了。' : '还没有可说的事：先让 agent 干点活吧（也可以去「设置 → 年度回顾」把 Claude Code 的记录勾上）。'}</p>}
-      {cur && (
-        <div className="ay-say" key={cur.text}>
-          <div className={'ay-say-tag' + (cur.sensitive.length ? ' priv' : '')}>
-            {[KIND[cur.kind], cur.kind === 'stat' ? null : ago <= 0 ? '今天' : `${ago} 天前`, cur.sensitive.length ? '私事' : null, cur.styled ? 'AI 改写' : null].filter(Boolean).join(' · ')}
-          </div>
-          <div>{cur.text}</div>
-        </div>
-      )}
-      <div className="ay-row">
-        <button className="ay-btn ay-primary" onClick={next} disabled={!data}>再翻一件</button>
-        <label className="ay-row ay-small"><input type="checkbox" checked={priv} onChange={e => setPriv(e.target.checked)} /> 藏起私事（健康、感情、成绩、家庭）</label>
-      </div>
-      {data && <p className="ay-muted ay-small" style={{ marginTop: 24 }}>最近 {data.days} 天 · 共 {data.moments.length} 件可说</p>}
-      <StyleSection onChanged={() => { queue.current = []; load() }} />
-      <p className="ay-muted ay-small">
+    <div style={{ marginTop: 28 }}>
+      <h3 style={{ margin: '0 0 6px' }}>翻旧账（dsh-pet）</h3>
+      <p className="ay-small">
         {link?.connected
-          ? '已接上 dsh-pet：右键它 → 更多 → 翻旧账，让它亲口说。'
-          : '装了 dsh-pet 的话，右键它 → 更多 → 翻旧账，可以让它亲口说。' + (link?.error ? `（现在没接上：${link.error}）` : '')}
+          ? '已接上 dsh-pet：右键它 → 更多 → 翻旧账，它会说一件你们以前一起干过的事。'
+          : '要装 dsh-pet 才能用：装好后右键它 → 更多 → 翻旧账。' + (link?.error ? `（现在没接上：${link.error}）` : '')}
       </p>
+      <StyleSection onChanged={() => {}} />
     </div>
   )
 }
@@ -79,7 +38,7 @@ function StyleSection({ onChanged }) {
   return (
     <div className="ay-style">
       <h2>让大肥鱼换个说法</h2>
-      <p className="ay-muted ay-small">上面的话是按模板套的。可以让你在 dsh 里配的模型按大肥鱼的口吻重写：事实（时间、哪件事、原话、数字）由程序定好，模型只管怎么说；写回来的每句都核对原话一字不差、数字对得上、不超过 50 字，没过的照旧说模板的。私事不发。写好的存在本机，dsh-pet 和这一页都用它。</p>
+      <p className="ay-muted ay-small">上面的话是按模板套的。可以让你在 dsh 里配的模型按大肥鱼的口吻重写：事实（时间、哪件事、原话、数字）由程序定好，模型只管怎么说；写回来的每句都核对原话一字不差、数字对得上、不超过 50 字，没过的照旧说模板的。私事不发。写好的存在本机，dsh-pet 说的时候就用它。</p>
       {st && <p className="ay-small">已改写 {st.styled} 件{st.meta?.route ? `（${st.meta.route.provider} · ${st.meta.route.model}）` : ''}</p>}
       {st?.running && (
         <div className="ay-row">

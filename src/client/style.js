@@ -46,13 +46,7 @@ export const CSS = `
 .ay-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
 @media (max-width: 600px) { .ay-quote-nums { grid-template-columns: 1fr; } .ay-page { padding: 20px 14px 60px; } }
 
-.ay-recall { max-width: 640px; margin: 0 auto; padding: 48px 24px 80px; box-sizing: border-box; height: 100%; overflow-y: auto; font-size: 14px; line-height: 1.6; }
-.ay-recall h1 { font-size: 22px; margin: 0 0 4px; }
-.ay-say { margin: 28px 0 16px; padding: 22px 24px; border-radius: 16px; border: 1px solid color-mix(in srgb, currentColor 16%, transparent); font-size: 17px; line-height: 1.75; white-space: pre-line; animation: ay-pop .18s ease-out; }
-.ay-say-tag { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 99px; background: color-mix(in srgb, currentColor 9%, transparent); margin-bottom: 10px; }
-.ay-say-tag.priv { background: rgba(201,130,28,.2); }
 .ay-style { margin-top: 36px; padding-top: 20px; border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent); }
 .ay-style h2 { font-size: 16px; margin: 0 0 6px; }
 .ay-style .ay-row { margin-top: 10px; flex-wrap: wrap; }
-@keyframes ay-pop { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 `
