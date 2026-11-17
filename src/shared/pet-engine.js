@@ -63,7 +63,7 @@ const CSS = `
 .fy-body { width: 100%; height: 100%; transform-origin: 50% 100%; transition: transform .16s cubic-bezier(.3,1.6,.5,1); }
 .fy-float { width: 100%; height: 100%; animation: fy-float 3.2s ease-in-out infinite; }
 .fy-pet.drag .fy-float { animation-play-state: paused; }
-.fy-float img, .fy-float svg { width: 100%; height: 100%; object-fit: contain; object-position: 50% 100%; display: block; pointer-events: none; -webkit-user-drag: none; }
+.fy-float img { width: 100%; height: 100%; object-fit: contain; object-position: 50% 100%; display: block; pointer-events: none; -webkit-user-drag: none; }
 @keyframes fy-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 /* 表情：没有单独表情图时，用代码加漫画符号 + 身体动作 */
 .fy-fig { position: relative; width: 100%; height: 100%; transform-origin: 50% 100%; }
@@ -142,7 +142,6 @@ const CSS = `
 }
 `
 
-const FISH_SVG = `<svg viewBox="0 0 120 100" aria-hidden="true"><ellipse cx="58" cy="60" rx="40" ry="30" fill="#3D6FE0"/><path d="M95 60 L116 44 L112 60 L116 76 Z" fill="#3D6FE0"/><ellipse cx="52" cy="70" rx="24" ry="12" fill="#CFE0FF"/><circle cx="42" cy="52" r="5" fill="#fff"/><circle cx="43" cy="53" r="2.6" fill="#1b2a4a"/><path d="M34 64 q6 5 12 0" stroke="#1b2a4a" stroke-width="2" fill="none" stroke-linecap="round"/></svg>`
 
 /**
  * @param {HTMLElement} host 放大肥鱼的容器（铺满可活动的区域）
@@ -177,11 +176,11 @@ export function createPet(host, opts) {
   const img = doc.createElement('img'); img.alt = ''; img.draggable = false
   img.style.visibility = 'hidden'              // 没载好之前不显示（不然是个带边框的空框）
   img.addEventListener('load', () => { img.style.visibility = '' })
-  img.addEventListener('error', () => {         // 这张坏了：别的图能用就换别的，都不行就用备用小鱼
+  img.addEventListener('error', () => {         // 这张坏了：换回 normal；normal 也坏了就保持现状（不画别的东西）
     const bad = img.getAttribute('src')
     console.warn('[小本本] 立绘载不出来', bad)
     for (const k in srcs) if (srcs[k] === bad) srcs[k] = null
-    show(expr)
+    if (srcs.normal) show(expr)
   })
   const mark = doc.createElement('div'); mark.className = 'fy-mark'
   fig.append(img, mark); float.appendChild(fig); body.appendChild(float)
@@ -190,7 +189,8 @@ export function createPet(host, opts) {
   let expr = 'normal', exprTimer = 0
   const ready = Promise.all(FIGURES.map(n => Promise.resolve(opts.figureSrc(n)).catch(() => null).then(u => { srcs[n] = u })))
   const srcOf = n => srcs[n] || srcs.normal
-  function show(n) { const u = srcOf(n); if (u) { if (img.getAttribute('src') !== u) img.src = u } else if (!fig.querySelector('svg')) { img.remove(); fig.insertAdjacentHTML('afterbegin', FISH_SVG) } }
+  // 没有备用形象：立绘取不到就不显示（隔 5 秒再取一次），绝不画别的东西顶上
+  function show(n) { const u = srcOf(n); if (u) { if (img.getAttribute('src') !== u) img.src = u } }
   /** 换表情：有这张表情图就换图；没有就用 normal 图 + 代码画的漫画符号和动作。ms 后回到 normal（0 = 保持到下次换） */
   function setExpr(name, ms = 0) {
     clearTimeout(exprTimer)
@@ -213,14 +213,22 @@ export function createPet(host, opts) {
       blink()
     }, 2500 + Math.random() * 3500)
   }
-  ready.then(() => { show(expr); blink() })
+  pet.style.visibility = 'hidden'
+  async function loadFigures() {
+    await Promise.all(FIGURES.filter(n => !srcs[n]).map(n => Promise.resolve(opts.figureSrc(n)).catch(() => null).then(u => { srcs[n] = u })))
+    if (!srcs.normal) { console.warn('[小本本] 立绘取不到，5 秒后再试'); figTimer = setTimeout(loadFigures, 5000); return }
+    pet.style.visibility = ''
+    show(expr)
+  }
+  let figTimer = 0
+  ready.then(() => { if (srcs.normal) { pet.style.visibility = ''; show(expr) } else loadFigures(); blink() })
 
   // 翻本子：点了之后先翻（2→3→4→5，记录没读完就在 4、5 之间来回翻），翻到了停在第 6 帧「看到了」
   let flipTimer = 0
   const hasFlip = () => !!(srcs['flip-2'] && srcs['flip-6'])
   function flipStart() {
     if (!hasFlip()) return false
-    clearTimeout(flipTimer); clearTimeout(exprTimer)
+    clearTimeout(flipTimer); clearTimeout(figTimer); clearTimeout(exprTimer)
     float.className = 'fy-float'; mark.textContent = ''
     expr = 'flip'
     const seq = ['flip-2', 'flip-3', 'flip-4', 'flip-5']
