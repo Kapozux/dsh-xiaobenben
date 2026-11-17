@@ -14,13 +14,18 @@ const prefs = {
 }
 
 const asset = k => `api/xiaobenben.asset?k=${encodeURIComponent(k)}`
-/** 表情图：先 HEAD 一下，有才用（没有的表情由引擎用代码画） */
+/**
+ * 表情图：一开始就整张取下来、转成 blob 地址（眨眼、换表情都用内存里的，不再联网——
+ * dsh 重启后旧页面的请求会被拒，以前眨眼时现取闭眼图，取不到就变成一个空框）。取不到的返回 null，引擎用别的图补。
+ */
 const seen = new Map()
 function figureSrc(name) {
   if (!FIGURES.includes(name)) return Promise.resolve(null)
   if (!seen.has(name)) {
-    const u = asset(`xiaobenben/${name}.png`)
-    seen.set(name, fetch(u, { method: 'GET', credentials: 'same-origin' }).then(r => (r.ok ? u : null)).catch(() => null))
+    seen.set(name, fetch(asset(`xiaobenben/${name}.png`), { credentials: 'same-origin' })
+      .then(r => (r.ok ? r.blob() : null))
+      .then(b => (b ? URL.createObjectURL(b) : null))
+      .catch(err => { console.warn('[dsh-xiaobenben] 立绘取不到', name, err); return null }))
   }
   return seen.get(name)
 }

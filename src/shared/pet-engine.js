@@ -30,7 +30,7 @@ const REPLY = LINES
 const G = 2600            // 重力 px/s²
 const BOUNCE = 0.5        // 撞墙 / 落地留下的速度
 const FRICTION = 0.86     // 落地后横向每次弹跳的摩擦
-const TYPE_MS = 32        // 打字机每个字
+const TYPE_MS = 16        // 打字机每个字
 const pick = arr => arr[Math.floor(Math.random() * arr.length)]
 const shuffle = arr => arr.map(x => [Math.random(), x]).sort((a, b) => a[0] - b[0]).map(x => x[1])
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
@@ -175,6 +175,14 @@ export function createPet(host, opts) {
   const float = doc.createElement('div'); float.className = 'fy-float'
   const fig = doc.createElement('div'); fig.className = 'fy-fig'
   const img = doc.createElement('img'); img.alt = ''; img.draggable = false
+  img.style.visibility = 'hidden'              // 没载好之前不显示（不然是个带边框的空框）
+  img.addEventListener('load', () => { img.style.visibility = '' })
+  img.addEventListener('error', () => {         // 这张坏了：别的图能用就换别的，都不行就用备用小鱼
+    const bad = img.getAttribute('src')
+    console.warn('[小本本] 立绘载不出来', bad)
+    for (const k in srcs) if (srcs[k] === bad) srcs[k] = null
+    show(expr)
+  })
   const mark = doc.createElement('div'); mark.className = 'fy-mark'
   fig.append(img, mark); float.appendChild(fig); body.appendChild(float)
   const MARK = { happy: '♪', surprised: '！', sleepy: 'z', shy: '///', sad: '💧', thinking: '…' }
@@ -361,7 +369,7 @@ export function createPet(host, opts) {
       t.full = true
       const isLast = t.i === parts.length - 1
       if (isLast && line.react) addReactions(b, line.react)
-      const read = Math.max(isLast ? (line.react ? 9000 : 3500) : 700, [...parts[t.i]].length * (isLast ? 110 : 40))
+      const read = Math.max(isLast ? (line.react ? 9000 : 3500) : 350, [...parts[t.i]].length * (isLast ? 110 : 25))
       t.timer = setTimeout(() => { if (isLast) { hideBubble(); idle() } else { t.i++; startBeat() } }, read)
     }
     // 鼠标停在气泡上就别收（在犹豫点哪个反应）
@@ -437,7 +445,7 @@ export function createPet(host, opts) {
     const me = thinking = { nags: 0 }
     thinkBubble(pick(REPLY.think))
     setExpr('thinking')
-    const wait = new Promise(r => setTimeout(r, 700 + Math.random() * 600))
+    const wait = new Promise(r => setTimeout(r, 250 + Math.random() * 200))
     const d = data || await load()
     await wait
     if (thinking !== me) return
