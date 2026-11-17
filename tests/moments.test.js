@@ -1,7 +1,8 @@
 // 大肥鱼的台词：dsh 事件和 Claude Code JSONL 切出来的轮一样算；挑时刻的规则；私事只看原话。
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildMoments, claudeTurns, dshTurns, fill } from '../src/core/moments.js'
+import { buildMoments, claudeTurns, dshTurns, fill, fillFit, topic, width } from '../src/core/moments.js'
+import { check } from '../scripts/check-lines.mjs'
 import { TPL } from '../src/core/lines.js'
 
 const T0 = new Date(2026, 10, 3, 14, 0).getTime()
@@ -55,8 +56,9 @@ test('挑时刻：干活、说好了却挨骂、认错，都带真数字和原�
   const kinds = ms.map(m => m.kind)
   const work = ms.find(m => m.kind === 'work')
   assert.ok(work, kinds.join(','))
-  assert.match(work.text, /「帮我修一下登录页的报错」/)
-  assert.match(work.text, /9 分钟/)
+  assert.match(work.text, /修登录页的报错/)
+  assert.doesNotMatch(work.text, /「修登录页/)                 // 任务名不套引号
+  assert.match(work.text, /9 分钟|碗/)
   const caught = ms.find(m => m.kind === 'caught')
   assert.ok(caught, kinds.join(','))
   assert.match(caught.text, /改好了，测试全过了/)
@@ -98,24 +100,48 @@ test('Claude Code：被打断后主人的下一句是「继续」不算喊停；
   assert.match(stopped[0].text, /别动 〔路径〕 那个文件/)
 })
 
-const REQ = { work: ['task', 'dur', 'rice'], late: ['task', 'dur', 'rice'], stopped: ['dur', 'next'], caught: ['claim', 'next'], complain: ['said'], sorry: ['said'], report: ['dur', 'said'],
-  stat_continue: ['span', 'n', 'dur'], stat_project: ['project', 'dur', 'days'], stat_longest: ['task', 'dur'], stat_busiest: ['date', 'dur'] }
-
-test('800 条模板：必须的占位符各一次；填完（含 {doing} 为空）没有残留括号、没有「，，」、不超长', () => {
-  const full = { w: '10 月 3 日中午 12:28', task: '「帮我把导入脚本重构一下」', dur: '12 分钟', doing: '，改了 4 个文件、跑了 19 条命令', rice: '小半碗', next: '还是不对啊你再看看', claim: '改好了，测试全过了', said: '你说得对，是我漏了一个分支', project: 'my-app', days: 23, files: 41, n: 37, span: '这 120 天', date: '10 月 3 日' }
-  for (const [k, list] of Object.entries(TPL)) {
-    assert.ok(list.length >= 25, k)
-    for (const t of list) {
-      for (const r of REQ[k]) assert.equal(t.split(`{${r}}`).length - 1, 1, `${k} 缺 {${r}}：${t}`)
-      for (const vars of [full, { ...full, doing: '', rice: '3 碗' }]) {
-        const out = fill(t, vars)
-        assert.doesNotMatch(out, /[{}]|，，|。，|「，/, out)
-        assert.ok([...out].length <= 110, out)
-        assert.doesNotMatch(out, / 小半碗/, out)
-        assert.doesNotMatch(out, /(分钟|小时) [\u4e00-\u9fff]/, out)
-      }
-    }
+test('模板全部过检查：一个人说、没有换行和说话人标签、引号不套娃、典型值下 ≤40 字、不重复', () => {
+  for (const [k, r] of Object.entries(check(TPL))) {
+    assert.ok(r.n >= 25, k)
+    assert.deepEqual(r.bad.map(b => `#${b.i} ${b.p.join('；')} ← ${b.t}`), [], k)
+    assert.equal(r.dup, 0, k)
   }
+  const full = { w: '10 月 3 日中午', clock: '1:02', task: '导入脚本重构', dur: '12 分钟', doing: '，改了 4 个文件', rice: '小半碗', next: '还是不对啊', claim: '改好了', said: '你说得对', project: 'my-app', days: 23, files: 41, n: 37, span: '这 120 天', date: '10 月 3 日' }
+  for (const list of Object.values(TPL)) for (const tpl of list) for (const vars of [full, { ...full, doing: '', rice: '3 碗' }]) {
+    const out = fill(tpl, vars)
+    assert.doesNotMatch(out, /[{}]|，，|。，|「，|\n/, out)
+    assert.doesNotMatch(out, / 小半碗/, out)
+  }
+})
+
+test('任务名压成 ≤10 字、不带引号：去客套、去长英文词、去括号补充；带路径或压不下就不要', () => {
+  assert.equal(topic('帮我把导入脚本重构一下'), '导入脚本重构')
+  assert.equal(topic('合并 Pipeline 和 Creators 页'), '合并页')
+  assert.equal(topic('继续做（以及对分析资料里面屏蔽关于任何USA的内容）'), '继续做')
+  assert.equal(topic('你能不能帮我把 README 写清楚一点'), 'README写清楚')
+  assert.equal(topic('把首页的按钮颜色改成蓝色然后加个动画'), '首页按钮颜色改成蓝色')
+  assert.equal(topic('看下 /Users/sam/proj/.env 里的 key'), null)
+  assert.equal(topic('fix the login bug'), null)
+  assert.equal(topic('做一个可以同时看三个博主观点对比的页面'), null)
+})
+
+test('原话：脏话打成 ××；在空格处截时前面至少两个汉字', () => {
+  const mk = (next) => dshTurns('k', { cwd: '/x/p' }, [
+    { type: 'user/message', time: min(0), data: { content: [{ type: 'text', text: '帮我把按钮改成蓝色' }], source: { kind: 'user' } } },
+    { type: 'assistant/message', time: min(2), data: { message: { content: [{ type: 'text', text: '已经改好了，刷新就能看到。' }] } } },
+    { type: 'turn/end', time: min(2), data: { reason: { kind: 'completed' } } },
+    { type: 'user/message', time: min(3), data: { content: [{ type: 'text', text: next }], source: { kind: 'user' } } },
+  ])
+  const caught = buildMoments(mk('还是不行啊，你他妈搞干净'), { now: min(60) }).find(m => m.kind === 'caught')
+  assert.ok(caught)
+  assert.doesNotMatch(caught.text, /他妈/)
+  assert.match(caught.text, /××/)
+})
+
+test('超过 40 字自动换短模板；全都塞不下就不说', () => {
+  const list = ['这一条特别特别长：{said}，本鱼要把它说完说完说完说完说完说完。', '短的：「{said}」']
+  for (let i = 0; i < 20; i++) assert.equal(fillFit(list, i, { said: '你说得对是我漏了一个分支呀' }), '短的：「你说得对是我漏了一个分支呀」')
+  assert.equal(fillFit([list[0]], 0, { said: '你说得对是我漏了一个分支呀' }), null)
 })
 
 test('被抓包放宽：「已经改了，刷新就能看到」+「刷新了还是没变啊」算；「你能不能用OR帮我」「没用中国模型？」不算；同一件事抄了两份只说一次', () => {

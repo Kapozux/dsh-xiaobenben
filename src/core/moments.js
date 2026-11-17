@@ -154,8 +154,10 @@ const pad = n => String(n).padStart(2, '0')
 export function when(ts) {
   const d = new Date(ts), h = d.getHours()
   const part = h < 5 ? '凌晨' : h < 9 ? '早上' : h < 12 ? '上午' : h < 13 ? '中午' : h < 18 ? '下午' : '晚上'
-  return `${d.getMonth() + 1} 月 ${d.getDate()} 日${part} ${h > 12 ? h - 12 : h}:${pad(d.getMinutes())}`
+  return `${d.getMonth() + 1} 月 ${d.getDate()} 日${part}`
 }
+/** 钟点：「1:02」（只有 late 用得上） */
+export const clock = ts => { const d = new Date(ts), h = d.getHours(); return `${h > 12 ? h - 12 : h}:${pad(d.getMinutes())}` }
 const dayKey = ts => { const d = new Date(ts); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` }
 export function dur(ms) {
   const m = Math.round(ms / 60e3)
@@ -167,16 +169,49 @@ export function dur(ms) {
 export const bowls = tokens => { const b = tokens / RICE; return b < 0.7 ? '小半碗' : b < 10 ? ` ${Math.max(1, Math.round(b))} 碗` : ` ${Math.round(b)} 大碗` }
 const clean = s => redact(s.replace(/\[Image[^\]]*\]/g, '').replace(/\*\*|`/g, '').replace(/^>\s*/gm, '').replace(/\s+/g, ' ').trim()).text
 const len = s => [...s].length
-function short(s, max = 22) { const t = clean(s.split('\n')[0]); return len(t) > max ? [...t].slice(0, max).join('') + '…' : t }
+/** 原话：第一行、去掉里面的引号（外面由模板套一层「」，不套娃），长了在标点处截，截不到再硬截加「…」 */
+const CUSS = /他妈的?|妈的|tmd|TMD|卧槽|我操|操你|傻逼|傻b|sb(?![a-z])|SB(?![A-Z])|nmsl|靠北|fuck\w*|shit/giu
+const cjk = s => (s.match(/[\u4e00-\u9fff]/g) || []).length
+function short(s, max = 14) {
+  const t = clean(s.split('\n')[0]).replace(/[「」『』“”"]/g, '').replace(CUSS, '××')   // 宠物冒泡不念脏话
+  if (len(t) <= max) return unq(t) || t
+  const cut = [...t].slice(0, max).join('')
+  const at = Math.max(...['，', '。', '！', '？', ',', '；', ' '].map(p => cut.lastIndexOf(p)))   // 很多人拿空格当逗号
+  return at >= 4 && cjk(cut.slice(0, at)) >= 2 ? cut.slice(0, at) : cut + '…'
+}
+/** 气泡里一句话的长度：不算空格（数字两边的空格是排版用的） */
+export const width = s => len(s.replace(/\s/g, ''))
+export const MAX_WIDTH = 40
+
+/**
+ * 任务名压成 10 字以内的话题，不带引号：去客套（帮我把…一下）、去长英文技术词（能留下至少两个汉字时）、去路径。
+ * 「帮我把导入脚本重构一下」→「导入脚本重构」；「合并 Pipeline 和 Creators 页」→「合并页」。压不出两个字就返回 null。
+ */
+export function topic(s, max = 10) {
+  let t = clean(s.split('\n')[0]).replace(/[「」『』“”"]/g, '')
+  if (/〔[^〕]*〕/.test(t)) return null                     // 带路径 / 密钥的，删掉之后剩下的不成话
+  t = t.replace(/\s*[（(].*$/u, m => len(t) - len(m) >= 2 ? '' : m)   // 括号里的补充说明不要
+  t = t.replace(/^(你|请你?|麻烦你?|能不能|可以|可不可以|帮忙|帮我|给我|我想|我要|我们|现在|再|先|然后)+/u, '')
+  t = t.replace(/^(把|将|给)/u, '').replace(/[吧呢啊呀嘛吗。！!？?，,.\s]+$/u, '').replace(/(一下|下|一点|一些)$/u, '').replace(/(?<=.)一下(?=.)/u, '').trim()
+  const noAscii = t.replace(/[A-Za-z][\w.+#-]*(\s*[和与跟、/&+]\s*[A-Za-z][\w.+#-]*)*/g, m => m.length <= 4 && !/\s/.test(m) ? m : '').replace(/\s+/g, '').replace(/^[和与跟、的]+|[和与跟、的]+$/g, '')
+  if (!/[\u4e00-\u9fff]/.test(t)) return len(t) <= max ? t : null    // 纯英文：放得下就原样，放不下不硬截
+  if ((/[A-Za-z]{7,}/.test(t) || len(t.replace(/\s/g, '')) > max) && len((noAscii.match(/[\u4e00-\u9fff]/g) || []).join('')) >= 2) t = noAscii
+  t = t.replace(/\s+(?=[\u4e00-\u9fff])|(?<=[\u4e00-\u9fff])\s+/g, '')
+  if (len(t) > max) t = t.split(/然后|并且|顺便|接着|，|。|；|,/u)[0] || t          // 只取第一件事
+  if (len(t) > max) t = t.replace(/(?<=.)的(?=.)/gu, '')                        // 「首页的按钮」→「首页按钮」
+  if (len(t) > max) return null                   // 找不到自然断点就不硬截（半句话读着别扭），交给会话标题或干脆不说
+  t = t.replace(/[，、,：:的和与]+$/u, '')
+  return len(t.replace(/[^\u4e00-\u9fffA-Za-z0-9]/g, '')) >= 2 ? t : null
+}
 const unq = s => s && s.replace(/[。.!！；;，,]+$/u, '')
 function sentenceWith(text, re, max = 36) {
   for (const s of clean(text).split(/(?<=[。！？!?\n])|(?<=\.)\s/)) {
     const t = s.trim()
-    if (re.test(t) && /[一-鿿]/.test(t) && len(t) <= max && len(t) >= 4) return unq(t)
+    if (re.test(t) && /[一-鿿]/.test(t) && !/[|│]|^[-*#>]|：\s*$/.test(t) && len(t) <= max && len(t) >= 4) return unq(t)   // 表格行、列表符号、半截引言不算一句话
   }
   return null
 }
-/** 填模板：{w} {task} {dur} {doing} {rice} {next} {claim} {said} {project} {days} {files} {n} {span} {date}。缺的变量填空串（只会是可选的）。 */
+/** 填模板：{w} {clock} {task} {dur} {doing} {rice} {next} {claim} {said} {project} {days} {files} {n} {span} {date}。缺的变量填空串（只会是可选的）。 */
 export function fill(tpl, vars) {
   return tpl.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? '')
     .replace(/(\d) +(?=小半碗)/g, '$1').replace(/ +(?=小半碗)/g, '')     // 「吃了 小半碗」→「吃了小半碗」
@@ -185,11 +220,28 @@ export function fill(tpl, vars) {
     .replace(/ {2,}/g, ' ')
 }
 const rice = tokens => bowls(tokens).trim()
-const pick = (arr, seed) => arr[parseInt(crypto.createHash('md5').update(String(seed)).digest('hex').slice(0, 8), 16) % arr.length]
+const hash = seed => parseInt(crypto.createHash('md5').update(String(seed)).digest('hex').slice(0, 8), 16)
+const pick = (arr, seed) => arr[hash(seed) % arr.length]
+/** 按种子挑一条，填出来超过 40 字（或套了两层引号）就顺次换下一条；全都超了返回 null，这件事不说 */
+export function fillFit(list, seed, ...varsList) {
+  const start = hash(seed) % list.length
+  for (const vars of varsList) {                // 先试原话完整的那一版，塞不下再试截短的
+    for (let i = 0; i < list.length; i++) {
+      const out = fill(list[(start + i) % list.length], vars)
+      if (width(out) <= MAX_WIDTH && !/「[^」]*「/.test(out)) return out
+    }
+  }
+  return null
+}
+/** 原话两版：完整（≤20 字，不截）和截短（max 字），给 fillFit 依次试 */
+const quoteVars = (base, quotes, max) => [
+  { ...base, ...Object.fromEntries(Object.entries(quotes).map(([k, v]) => [k, short(v, 20)])) },
+  { ...base, ...Object.fromEntries(Object.entries(quotes).map(([k, v]) => [k, short(v, max)])) },
+]
 function task(tr) {
   const first = tr.text.split('\n')[0].trim()
-  if (!FILLER.test(first) && len(first) >= 6 && len(first) <= 50 && ASK.test(first)) return `「${short(first)}」`
-  if (tr.title) return `「${short(tr.title, 20)}」那摊事`
+  if (!FILLER.test(first) && len(first) >= 4 && len(first) <= 50 && ASK.test(first)) { const t = topic(first); if (t) return t }
+  if (tr.title) return topic(tr.title)
   return null
 }
 const isHuman = s => s && !INJECTED.some(p => s.startsWith(p))
@@ -205,6 +257,7 @@ export function buildMoments(turns, { since = 0, now = Date.now(), days = null }
   const moments = []
   const seenSrc = new Set()
   const add = (kind, ts, text, anim, src = '') => {
+    if (!text) return                         // 没有一条模板能塞进 40 字：这件事不说
     // 同一件事只说一次：Claude Code 续上旧会话时会把前面的记录抄进新文件，同一轮会出现好几次（模板按种子挑，文字不同，光按文字去重拦不住）
     const key = kind + '|' + (src ? src.replace(/\s+/g, '').slice(0, 120) : text)
     if (kind !== 'stat' && seenSrc.has(key)) return
@@ -217,46 +270,46 @@ export function buildMoments(turns, { since = 0, now = Date.now(), days = null }
   for (const tr of real) {
     const tk = task(tr)
     const w = when(tr.start)
-    const acts = [tr.edited.size && `改了 ${tr.edited.size} 个文件`, tr.commands && `跑了 ${tr.commands} 条命令`, tr.reads >= 10 && `翻了 ${tr.reads} 个文件`, tr.agents && `还喊了 ${tr.agents} 个帮手`].filter(Boolean)
-    const doing = acts.length ? '，' + acts.join('、') : ''
+    const acts = [tr.edited.size && `改了 ${tr.edited.size} 个文件`, tr.commands && `跑了 ${tr.commands} 条命令`, tr.reads >= 10 && `翻了 ${tr.reads} 个文件`, tr.agents && `喊了 ${tr.agents} 个帮手`].filter(Boolean)
+    const doing = acts.length ? '，' + acts[0] : ''     // 只说一件，句子才短
     const seed = tr.key + tr.start
     const src = tr.text + ' ' + (tr.title || '')
 
     if (tk && tr.active >= 5 * 60e3 && !tr.interrupted) {
       const late = new Date(tr.start).getHours() < 5
-      add(late ? 'late' : 'work', tr.start, fill(pick(late ? TPL.late : TPL.work, seed), { w, task: tk, dur: dur(tr.active), doing, rice: rice(tr.tokens) }), late ? 'yawn' : 'work', src)
+      add(late ? 'late' : 'work', tr.start, fillFit(late ? TPL.late : TPL.work, seed, { w, clock: clock(tr.start), task: tk, dur: dur(tr.active), doing, rice: rice(tr.tokens) }), late ? 'yawn' : 'work', src)
     }
 
     if (tr.interrupted && tr.active >= 60e3 && isHuman(tr.next) && !FILLER.test(tr.next.trim()) && len(tr.next) >= 3 && len(tr.next) <= 40) {
-      add('stopped', tr.end, fill(pick(TPL.stopped, seed), { w, dur: dur(tr.active), next: short(tr.next, 30) }), 'startle', tr.next)
+      add('stopped', tr.end, fillFit(TPL.stopped, seed, ...quoteVars({ w, dur: dur(tr.active) }, { next: tr.next }, 14)), 'startle', tr.next)
     }
 
     const lastText = tr.texts.at(-1) || ''
     // 被抓包：这一轮最后几段话里有一句「好了 / 已经改了」，主人下一句就是「还是不行」之类
     let claim = null
-    for (const tx of tr.texts.slice(-3).reverse()) { claim = sentenceWith(tx, DONE, 40); if (claim) { claim = claim.replace(/^[-*#>\s]+/, ''); break } }
+    for (const tx of tr.texts.slice(-3).reverse()) { claim = sentenceWith(tx, DONE, 40); if (claim) { claim = claim.replace(/^[-*#>\s]+/, ''); if ((claim.match(/[\u4e00-\u9fff]/g) || []).length < 2) { claim = null; continue }; break } }
     const nextFirst = (tr.next || '').split('\n')[0].trim()
     if (claim && isHuman(tr.next) && !FILLER.test(nextFirst) && BACKFIRE.test(nextFirst) && len(nextFirst) >= 2 && len(nextFirst) <= 60) {
-      add('caught', tr.start, fill(pick(TPL.caught, seed), { w, claim, next: short(nextFirst, 30) }), 'caught', claim + ' ' + nextFirst)
+      add('caught', tr.start, fillFit(TPL.caught, seed, ...quoteVars({ w }, { claim, next: nextFirst }, 12)), 'caught', claim + ' ' + nextFirst)
       caughtNext.add(tr.next)
     }
 
     const first = tr.text.split('\n')[0].trim()
     if (COMPLAIN.test(first) && len(first) <= 40 && !caughtNext.has(tr.text)) {     // 已经当成「被抓包」说过的那句不再当挨骂说
-      add('complain', tr.start, fill(pick(TPL.complain, seed), { w, said: unq(short(first, 30)) }), 'sigh', first)
+      add('complain', tr.start, fillFit(TPL.complain, seed, ...quoteVars({ w }, { said: first }, 14)), 'sigh', first)
     }
 
     for (const tx of tr.texts) {
       const s = sentenceWith(tx, SORRY, 40)
       if (!s) continue
-      add('sorry', tr.start, fill(pick(TPL.sorry, seed + s), { w, said: s }), 'bow', s)
+      add('sorry', tr.start, fillFit(TPL.sorry, seed + s, ...quoteVars({ w }, { said: s }, 14)), 'bow', s)
       break
     }
 
     if (tr.active >= 10 * 60e3 && !tr.interrupted) {
       const s = sentenceWith(lastText, /./, 40)
       if (s && !SORRY.test(s)) {
-        add('report', tr.end, fill(pick(TPL.report, seed + 'r'), { w: when(tr.end), dur: dur(tr.active), said: s }), 'cheer', s)
+        add('report', tr.end, fillFit(TPL.report, seed + 'r', ...quoteVars({ w: when(tr.end), dur: dur(tr.active) }, { said: s }, 14)), 'cheer', s)
       }
     }
   }
@@ -265,7 +318,7 @@ export function buildMoments(turns, { since = 0, now = Date.now(), days = null }
   const span = days ? `这 ${days} 天` : '这段时间'
   const fillers = real.filter(t => FILLER.test(t.text.split('\n')[0].trim()) && /继续|continue|接着/i.test(t.text))
   if (fillers.length >= 5) {
-    add('stat', fillers.at(-1).start, fill(pick(TPL.stat_continue, fillers.length), { span, n: fillers.length, dur: dur(fillers.reduce((a, t) => a + t.active, 0)) }), 'eat')
+    add('stat', fillers.at(-1).start, fillFit(TPL.stat_continue, fillers.length, { span, n: fillers.length, dur: dur(fillers.reduce((a, t) => a + t.active, 0)) }), 'eat')
   }
   const byProject = {}
   for (const t of real) {
@@ -275,14 +328,14 @@ export function buildMoments(turns, { since = 0, now = Date.now(), days = null }
   }
   for (const [p, v] of Object.entries(byProject)) {
     if (v.ms < 60 * 60e3) continue
-    add('stat', now, fill(pick(TPL.stat_project, p), { project: p, dur: dur(v.ms), days: v.days.size, files: v.files.size, rice: rice(v.tok) }), 'file')
+    add('stat', now, fillFit(TPL.stat_project, p, { project: [...p].length > 14 ? [...p].slice(0, 14).join('') + '…' : p, dur: dur(v.ms), days: v.days.size, files: v.files.size, rice: rice(v.tok) }), 'file')
   }
   const longest = [...real].sort((a, b) => b.active - a.active)[0]
-  if (longest && task(longest)) add('stat', longest.start, fill(pick(TPL.stat_longest, longest.key + longest.start), { w: when(longest.start), task: task(longest), dur: dur(longest.active), rice: rice(longest.tokens) }), 'eat', longest.text)
+  if (longest && task(longest)) add('stat', longest.start, fillFit(TPL.stat_longest, longest.key + longest.start, { w: when(longest.start), task: task(longest), dur: dur(longest.active), rice: rice(longest.tokens) }), 'eat', longest.text)
   const perDay = {}
   for (const t of real) perDay[dayKey(t.start)] = (perDay[dayKey(t.start)] || 0) + t.active
   const busiest = Object.entries(perDay).sort((a, b) => b[1] - a[1])[0]
-  if (busiest && busiest[1] >= 30 * 60e3) add('stat', new Date(busiest[0] + 'T12:00').getTime(), fill(pick(TPL.stat_busiest, busiest[0]), { date: `${+busiest[0].slice(5, 7)} 月 ${+busiest[0].slice(8)} 日`, dur: dur(busiest[1]) }), 'eat')
+  if (busiest && busiest[1] >= 30 * 60e3) add('stat', new Date(busiest[0] + 'T12:00').getTime(), fillFit(TPL.stat_busiest, busiest[0], { date: `${+busiest[0].slice(5, 7)} 月 ${+busiest[0].slice(8)} 日`, dur: dur(busiest[1]) }), 'eat')
 
   const seen = new Set()
   const capped = {}

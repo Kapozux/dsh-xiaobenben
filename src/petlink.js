@@ -131,7 +131,7 @@ export class PetLink {
     let lockId = null
     try {
       const m = await this.#nextMoment()
-      const text = m ? m.text : '本肥鱼还没跟主人一起干过活呢。派点活给本肥鱼？'
+      const text = (m ? m.text : '本鱼还没跟主人一起干过活呢，派点活嘛？').replace(/\s*\n\s*/g, ' ')   // 气泡不认换行
       const duration = this.sayMs(text)          // 气泡停多久：按字数，6～20 秒
       const lock = await this.#req('POST', '/lock' + q, { ttl: duration + 5000 })
       if (!lock?.ok && !lock?.lockId) throw new Error('占不到这只宠物：' + (lock?.reason || JSON.stringify(lock)))
