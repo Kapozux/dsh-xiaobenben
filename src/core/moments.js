@@ -8,6 +8,7 @@
  *
  * 私事判断只看原话素材（不看模板，模板里的「有感情了」不算感情）。原话都过 redact 打码。
  */
+import { TPL } from './lines.js'
 import crypto from 'node:crypto'
 import { redact } from './redact.js'
 import { sensitiveCats } from './sensitive.js'
@@ -173,6 +174,15 @@ function sentenceWith(text, re, max = 36) {
   }
   return null
 }
+/** 填模板：{w} {task} {dur} {doing} {rice} {next} {claim} {said} {project} {days} {files} {n} {span} {date}。缺的变量填空串（只会是可选的）。 */
+export function fill(tpl, vars) {
+  return tpl.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? '')
+    .replace(/(\d) +(?=小半碗)/g, '$1').replace(/ +(?=小半碗)/g, '')     // 「吃了 小半碗」→「吃了小半碗」
+    .replace(/(^|[，。！？「（\n])，/g, '$1')                         // {doing} 为空 / 接在标点后
+    .replace(/(分钟|小时|碗) +(?=[\u4e00-\u9fff（「])/g, '$1')                  // 「干了 2 分钟 才说」→「干了 2 分钟才说」
+    .replace(/ {2,}/g, ' ')
+}
+const rice = tokens => bowls(tokens).trim()
 const pick = (arr, seed) => arr[parseInt(crypto.createHash('md5').update(String(seed)).digest('hex').slice(0, 8), 16) % arr.length]
 function task(tr) {
   const first = tr.text.split('\n')[0].trim()
@@ -206,59 +216,35 @@ export function buildMoments(turns, { since = 0, now = Date.now(), days = null }
 
     if (tk && tr.active >= 5 * 60e3 && !tr.interrupted) {
       const late = new Date(tr.start).getHours() < 5
-      add(late ? 'late' : 'work', tr.start, pick(late ? [
-        `${w}，主人还不睡，让本肥鱼${tk}。本肥鱼打着哈欠干了 ${dur(tr.active)}${doing}。夜宵是${bowls(tr.tokens)}白饭。`,
-        `${w}。全世界都睡了，只有主人和本肥鱼在搞${tk}。${dur(tr.active)}，${bowls(tr.tokens).trim()}白饭，本肥鱼要加班费。`,
-      ] : [
-        `${w}，主人让本肥鱼${tk}。本肥鱼嘿咻嘿咻忙了 ${dur(tr.active)}${doing}，吃掉${bowls(tr.tokens)}白饭。`,
-        `${w}，${tk}。本肥鱼埋头 ${dur(tr.active)}${doing}。主人请客的${bowls(tr.tokens)}白饭，本肥鱼吃得心安理得。`,
-        `${w}，本肥鱼替主人搞${tk}，一口气 ${dur(tr.active)}${doing}，吃了${bowls(tr.tokens)}白饭。主人那会儿在干嘛？本肥鱼不知道，本肥鱼只管吃。`,
-      ], seed), late ? 'yawn' : 'work', src)
+      add(late ? 'late' : 'work', tr.start, fill(pick(late ? TPL.late : TPL.work, seed), { w, task: tk, dur: dur(tr.active), doing, rice: rice(tr.tokens) }), late ? 'yawn' : 'work', src)
     }
 
     if (tr.interrupted && tr.active >= 60e3 && isHuman(tr.next) && !FILLER.test(tr.next.trim()) && len(tr.next) >= 3 && len(tr.next) <= 40) {
-      add('stopped', tr.end, pick([
-        `${w}，本肥鱼刚吭哧吭哧干了 ${dur(tr.active)}，主人一把按住：「${short(tr.next, 30)}」。好的好的，本肥鱼停手。`,
-        `本肥鱼正干得起劲（${dur(tr.active)}了），主人喊停：「${short(tr.next, 30)}」。……白饭先放下。`,
-      ], seed), 'startle', tr.next)
+      add('stopped', tr.end, fill(pick(TPL.stopped, seed), { w, dur: dur(tr.active), next: short(tr.next, 30) }), 'startle', tr.next)
     }
 
     const lastText = tr.texts.at(-1) || ''
     const claim = sentenceWith(lastText, DONE, 30)
     if (claim && isHuman(tr.next) && COMPLAIN.test(tr.next) && len(tr.next) <= 40) {
-      add('caught', tr.start, pick([
-        `${w}，本肥鱼说「${claim}」。主人下一句：「${short(tr.next, 30)}」。……本肥鱼先去吃个饭冷静一下。`,
-        `本肥鱼：「${claim}」\n主人：「${short(tr.next, 30)}」\n本肥鱼：（默默放下饭碗）`,
-      ], seed), 'caught', claim + ' ' + tr.next)
+      add('caught', tr.start, fill(pick(TPL.caught, seed), { w, claim, next: short(tr.next, 30) }), 'caught', claim + ' ' + tr.next)
     }
 
     const first = tr.text.split('\n')[0].trim()
     if (COMPLAIN.test(first) && len(first) <= 40 && !claim) {
-      add('complain', tr.start, pick([
-        `${w}，主人说「${short(first, 30)}」。本肥鱼表示理解，嘿咻……这就改。`,
-        `「${short(first, 30)}」——主人 ${w}。本肥鱼听到了，本肥鱼在改了，别凶。`,
-        `${w}，主人发火：「${short(first, 30)}」。本肥鱼缩了缩尾巴，默默打开文件。`,
-      ], seed), 'sigh', first)
+      add('complain', tr.start, fill(pick(TPL.complain, seed), { w, said: unq(short(first, 30)) }), 'sigh', first)
     }
 
     for (const tx of tr.texts) {
       const s = sentenceWith(tx, SORRY, 40)
       if (!s) continue
-      add('sorry', tr.start, pick([
-        `${w}，本肥鱼承认：「${s}」。本肥鱼知道错了，不是故意的。`,
-        `「${s}」——本肥鱼，${w}。（行礼）下次一定先看清楚再动手。`,
-        `本肥鱼认错现场（${w}）：「${s}」。罚本肥鱼少吃一碗白饭。`,
-      ], seed + s), 'bow', s)
+      add('sorry', tr.start, fill(pick(TPL.sorry, seed + s), { w, said: s }), 'bow', s)
       break
     }
 
     if (tr.active >= 10 * 60e3 && !tr.interrupted) {
       const s = sentenceWith(lastText, /./, 40)
       if (s && !SORRY.test(s)) {
-        add('report', tr.end, pick([
-          `忙完 ${dur(tr.active)}，本肥鱼最后跟主人汇报：「${s}」`,
-          `${when(tr.end)}，本肥鱼交差：「${s}」。白饭呢？`,
-        ], seed + 'r'), 'cheer', s)
+        add('report', tr.end, fill(pick(TPL.report, seed + 'r'), { w: when(tr.end), dur: dur(tr.active), said: s }), 'cheer', s)
       }
     }
   }
@@ -267,7 +253,7 @@ export function buildMoments(turns, { since = 0, now = Date.now(), days = null }
   const span = days ? `这 ${days} 天` : '这段时间'
   const fillers = real.filter(t => FILLER.test(t.text.split('\n')[0].trim()) && /继续|continue|接着/i.test(t.text))
   if (fillers.length >= 5) {
-    add('stat', fillers.at(-1).start, `${span}，主人一共喊了 ${fillers.length} 次「继续」。本肥鱼就因此多干了 ${dur(fillers.reduce((a, t) => a + t.active, 0))}。白饭照吃，一粒不少。`, 'eat')
+    add('stat', fillers.at(-1).start, fill(pick(TPL.stat_continue, fillers.length), { span, n: fillers.length, dur: dur(fillers.reduce((a, t) => a + t.active, 0)) }), 'eat')
   }
   const byProject = {}
   for (const t of real) {
@@ -277,17 +263,14 @@ export function buildMoments(turns, { since = 0, now = Date.now(), days = null }
   }
   for (const [p, v] of Object.entries(byProject)) {
     if (v.ms < 60 * 60e3) continue
-    add('stat', now, pick([
-      `在 ${p} 里，本肥鱼陪主人干了 ${dur(v.ms)}，${v.days.size} 天，改过 ${v.files.size} 个文件，吃了${bowls(v.tok)}白饭。`,
-      `${p}：${v.days.size} 天、${dur(v.ms)}、${bowls(v.tok).trim()}白饭。本肥鱼对这个文件夹有感情了。`,
-    ], p), 'file')
+    add('stat', now, fill(pick(TPL.stat_project, p), { project: p, dur: dur(v.ms), days: v.days.size, files: v.files.size, rice: rice(v.tok) }), 'file')
   }
   const longest = [...real].sort((a, b) => b.active - a.active)[0]
-  if (longest && task(longest)) add('stat', longest.start, `最久的一次：${when(longest.start)}，${task(longest)}，本肥鱼连着干了 ${dur(longest.active)}，吃掉${bowls(longest.tokens)}白饭。那天本肥鱼累瘫了。`, 'eat', longest.text)
+  if (longest && task(longest)) add('stat', longest.start, fill(pick(TPL.stat_longest, longest.key + longest.start), { w: when(longest.start), task: task(longest), dur: dur(longest.active), rice: rice(longest.tokens) }), 'eat', longest.text)
   const perDay = {}
   for (const t of real) perDay[dayKey(t.start)] = (perDay[dayKey(t.start)] || 0) + t.active
   const busiest = Object.entries(perDay).sort((a, b) => b[1] - a[1])[0]
-  if (busiest && busiest[1] >= 30 * 60e3) add('stat', new Date(busiest[0] + 'T12:00').getTime(), `${+busiest[0].slice(5, 7)} 月 ${+busiest[0].slice(8)} 日是本肥鱼最累的一天：主人派的活加起来 ${dur(busiest[1])}。本肥鱼那天吃了好多饭。`, 'eat')
+  if (busiest && busiest[1] >= 30 * 60e3) add('stat', new Date(busiest[0] + 'T12:00').getTime(), fill(pick(TPL.stat_busiest, busiest[0]), { date: `${+busiest[0].slice(5, 7)} 月 ${+busiest[0].slice(8)} 日`, dur: dur(busiest[1]) }), 'eat')
 
   const seen = new Set()
   const capped = {}

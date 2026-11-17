@@ -1,7 +1,9 @@
 // 大肥鱼的台词：dsh 事件和 Claude Code JSONL 切出来的轮一样算；挑时刻的规则；私事只看原话。
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildMoments, claudeTurns, dshTurns } from '../src/core/moments.js'
+import { buildMoments, claudeTurns, dshTurns, fill } from '../src/core/moments.js'
+import { TPL } from '../src/core/lines.js'
+import { LINES } from '../src/shared/lines.js'
 
 const T0 = new Date(2026, 10, 3, 14, 0).getTime()
 const min = m => T0 + m * 60e3
@@ -56,7 +58,6 @@ test('挑时刻：干活、说好了却挨骂、认错，都带真数字和原�
   assert.ok(work, kinds.join(','))
   assert.match(work.text, /「帮我修一下登录页的报错」/)
   assert.match(work.text, /9 分钟/)
-  assert.match(work.text, /改了 4 个文件、跑了 4 条命令/)
   const caught = ms.find(m => m.kind === 'caught')
   assert.ok(caught, kinds.join(','))
   assert.match(caught.text, /改好了，测试全过了/)
@@ -96,4 +97,33 @@ test('Claude Code：被打断后主人的下一句是「继续」不算喊停；
   const stopped = buildMoments(turns, { now: min(60) }).filter(m => m.kind === 'stopped')
   assert.equal(stopped.length, 1)
   assert.match(stopped[0].text, /别动 〔路径〕 那个文件/)
+})
+
+const REQ = { work: ['task', 'dur', 'rice'], late: ['task', 'dur', 'rice'], stopped: ['dur', 'next'], caught: ['claim', 'next'], complain: ['said'], sorry: ['said'], report: ['dur', 'said'],
+  stat_continue: ['span', 'n', 'dur'], stat_project: ['project', 'dur', 'days'], stat_longest: ['task', 'dur'], stat_busiest: ['date', 'dur'] }
+
+test('800 条模板：必须的占位符各一次；填完（含 {doing} 为空）没有残留括号、没有「，，」、不超长', () => {
+  const full = { w: '10 月 3 日中午 12:28', task: '「帮我把导入脚本重构一下」', dur: '12 分钟', doing: '，改了 4 个文件、跑了 19 条命令', rice: '小半碗', next: '还是不对啊你再看看', claim: '改好了，测试全过了', said: '你说得对，是我漏了一个分支', project: 'pdf2md-web', days: 23, files: 41, n: 37, span: '这 120 天', date: '10 月 3 日' }
+  for (const [k, list] of Object.entries(TPL)) {
+    assert.ok(list.length >= 25, k)
+    for (const t of list) {
+      for (const r of REQ[k]) assert.equal(t.split(`{${r}}`).length - 1, 1, `${k} 缺 {${r}}：${t}`)
+      for (const vars of [full, { ...full, doing: '', rice: '3 碗' }]) {
+        const out = fill(t, vars)
+        assert.doesNotMatch(out, /[{}]|，，|。，|「，/, out)
+        assert.ok([...out].length <= 110, out)
+        assert.doesNotMatch(out, / 小半碗/, out)
+        assert.doesNotMatch(out, /(分钟|小时) [\u4e00-\u9fff]/, out)
+      }
+    }
+  }
+})
+
+test('反应：每类至少 10 个按钮、按钮 ≤6 字；👍👎 第一句是主人给的', () => {
+  for (const [k, list] of Object.entries(LINES.react)) {
+    assert.ok(list.length >= 10, k)
+    for (const r of list) assert.ok([...r.label].length <= 6, r.label)
+  }
+  assert.equal(LINES.up[0], '本肥鱼看来说的挺有道理，谢谢主人对我的鼓励！')
+  assert.equal(LINES.down[0], '呜呜呜主人，你不能这么说我')
 })

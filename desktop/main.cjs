@@ -17,7 +17,7 @@ else if (!app.requestSingleInstanceLock()) app.exit(0)
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'fy', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }])
 
-const STATIC = { '/index.html': 'desktop/index.html', '/pet-engine.js': 'src/shared/pet-engine.js' }
+const STATIC = { '/index.html': 'desktop/index.html', '/pet-engine.js': 'src/shared/pet-engine.js', '/lines.js': 'src/shared/lines.js' }
 
 app.whenReady().then(() => {
   if (process.platform === 'darwin') app.dock?.hide()
@@ -40,6 +40,7 @@ app.whenReady().then(() => {
   const area = screen.getPrimaryDisplay().workArea
   const win = new BrowserWindow({
     x: area.x, y: area.y, width: area.width, height: area.height,
+    acceptFirstMouse: true,     // 没聚焦时第一下点击直接算数（不然 macOS 会吞掉按下 / 松开里的一个）
     transparent: true, frame: false, hasShadow: false, resizable: false, movable: false,
     alwaysOnTop: true, skipTaskbar: true, focusable: true, fullscreenable: false, show: false,
     backgroundColor: '#00000000',
@@ -57,7 +58,26 @@ app.whenReady().then(() => {
     win.webContents.once('did-finish-load', async () => {
       const wait = ms => new Promise(r => setTimeout(r, ms))
       await wait(5000)
-      await win.webContents.executeJavaScript('window.__fy.poke()')
+      if (process.env.FY_SELFTEST_CLICK) {
+        // 用真的鼠标事件点大肥鱼中间，看它会不会被甩走
+        const pos = () => win.webContents.executeJavaScript("(()=>{const r=document.querySelector('.fy-pet').getBoundingClientRect();return [Math.round(r.x),Math.round(r.y)]})()")
+        const [px, py] = await pos(); const cx = px + 100, cy = py + 100
+        console.error('[大肥鱼自测] 点之前', [px, py])
+        win.webContents.sendInputEvent({ type: 'mouseMove', x: cx, y: cy })
+        await wait(50)
+        win.webContents.sendInputEvent({ type: 'mouseDown', x: cx, y: cy, button: 'left', clickCount: 1 })
+        await wait(90)
+        win.webContents.sendInputEvent({ type: 'mouseUp', x: cx, y: cy, button: 'left', clickCount: 1 })
+        for (let i = 0; i < 8; i++) { await wait(150); console.error('[大肥鱼自测] 位置', await pos()) }
+        await wait(6000)
+        // 松手事件丢了：按下之后直接来几个没按键的移动，往左上角去
+        const [qx, qy] = await pos()
+        console.error('[大肥鱼自测] 丢松手之前', [qx, qy])
+        win.webContents.sendInputEvent({ type: 'mouseDown', x: qx + 100, y: qy + 100, button: 'left', clickCount: 1 })
+        for (let i = 1; i <= 10; i++) { await wait(20); win.webContents.sendInputEvent({ type: 'mouseMove', x: qx + 100 - 80 * i, y: qy + 100 - 60 * i }) }
+        await wait(800)
+        console.error('[大肥鱼自测] 丢松手之后', await pos())
+      } else await win.webContents.executeJavaScript('window.__fy.poke()')
       for (let i = 0; i < 40; i++) {      // 等到说完、底下的反应按钮出来
         await wait(500)
         if (await win.webContents.executeJavaScript("!!document.querySelector('.fy-react')")) break

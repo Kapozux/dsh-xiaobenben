@@ -1,3 +1,4 @@
+import { LINES } from './lines.js'
 /**
  * 大肥鱼引擎：不依赖 React，dsh 浮层（Pet.jsx）和桌面窗口（desktop/）共用一份。
  *
@@ -20,28 +21,16 @@ export const MODES = [
   ['stat', '总账', m => m.kind === 'stat'],
 ]
 
-/** 说完后的两个专属反应：[按钮字, 大肥鱼的回话（数组随机挑一句；null = 直接再说一件）, 动画] */
-const REACT = {
-  work: [['辛苦了', ['嘿嘿，被夸了。本肥鱼再吃一碗白饭庆祝一下。', '不辛苦不辛苦，有白饭就不辛苦。'], 'cheer'], ['就这？', ['……本肥鱼下次多干一会儿就是了。', '主人好严格，本肥鱼记住了。'], 'sigh']],
-  late: [['早点睡', ['主人先睡！本肥鱼收拾完也睡。', '好哦，那下次十二点前喊本肥鱼干活。'], 'yawn'], ['再来一个', null]],
-  report: [['干得好', ['嘿咻！本肥鱼就知道主人识货。', '那……能多给一碗白饭吗？'], 'cheer'], ['真的假的', ['真的！……大部分是真的。', '主人自己去看嘛，本肥鱼没骗人（小声）'], 'sigh']],
-  sorry: [['原谅你了', ['谢谢主人！本肥鱼以后一定……尽量不犯。', '呜，主人真好。'], 'bow'], ['还敢？', ['不敢了不敢了！（缩成一团）', '本肥鱼发誓！……下次换个错犯。'], 'startle']],
-  complain: [['我当时太凶了', ['没事，本肥鱼皮厚（肉也厚）。', '本肥鱼不记仇，本肥鱼只记白饭。'], 'bow'], ['你活该', ['……好吧，确实活该。', '哼，本肥鱼也是会委屈的。'], 'sigh']],
-  caught: [['抓到你了', ['本肥鱼不是故意的！测试它自己挂的！', '嘘……别告诉别人。'], 'caught'], ['下次先测', ['好的好的，本肥鱼先测再说。', '记住了，先测试，再吹牛。'], 'bow']],
-  stopped: [['我错怪你了', ['没事没事，本肥鱼停得可快了。', '那本肥鱼接着干？'], 'poke'], ['停得好', ['……本肥鱼也觉得那会儿有点上头。', '好吧，主人说停就停。'], 'sigh']],
-  stat: [['这么多？', ['对呀，本肥鱼可是很能干（吃）的。', '数字不会骗人，白饭也不会。'], 'eat'], ['再来一个', null]],
-}
-const REPLY = {
-  up: ['本肥鱼看来说的挺有道理，谢谢主人对我的鼓励！', '嘿咻！被主人夸了，本肥鱼今天多吃一碗白饭。', '主人懂本肥鱼！这种本肥鱼以后多说点。'],
-  down: ['呜呜呜主人，你不能这么说我', '呜……本肥鱼说错话了吗，本肥鱼去角落反省一下。', '哼，不好笑就不好笑嘛，本肥鱼换一件说。'],
-  angry: ['别一直点！本肥鱼要晕了！', '再点本肥鱼就要咬人了！（真的会咬）', '停停停！本肥鱼脑子要被戳散了！'],
-  sulk: ['哼。', '本肥鱼在生气，等一下再戳。', '……不理你。'],
-}
+/** 反应按钮、👍👎 的回话、想 / 催 / 生气的台词：都在 lines.js（每类十几个反应，每次随机抽两个） */
+const REACT = LINES.react
+const REPLY = LINES
 
 const G = 2600            // 重力 px/s²
 const BOUNCE = 0.5        // 撞墙 / 落地留下的速度
 const FRICTION = 0.86     // 落地后横向每次弹跳的摩擦
 const TYPE_MS = 32        // 打字机每个字
+const pick = arr => arr[Math.floor(Math.random() * arr.length)]
+const shuffle = arr => arr.map(x => [Math.random(), x]).sort((a, b) => a[0] - b[0]).map(x => x[1])
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
 
 /**
@@ -208,38 +197,46 @@ export function createPet(host, opts) {
   const kick = () => { if (!raf) { last = performance.now(); raf = requestAnimationFrame(step) } }
 
   // ---------- 拖、甩、戳 ----------
+  // 防「按下 / 松开丢了一个」：macOS 第一次点没聚焦的窗口时会吞掉其中一个事件。
+  // 没按着键的移动一律不算拖；丢了捕获就当松手；甩出去的速度只看最后 100ms、封顶，静止松手不甩。
+  function endDrag(e, cancelled) {
+    const d = dragging; dragging = null; pet.classList.remove('drag')
+    if (!d) return
+    if (!d.moved) { if (!cancelled) poke(); return }
+    const now = performance.now()
+    const recent = d.hist.filter(h => now - h[2] <= 100)
+    if (recent.length >= 2 && !cancelled) {
+      const [ax, ay, at] = recent[0], [bx, by, bt] = recent.at(-1)
+      const dt = Math.max(16, bt - at) / 1000
+      vx = clamp((bx - ax) / dt, -1800, 1800); vy = clamp((by - ay) / dt, -1800, 1800)
+    } else { vx = 0; vy = 0 }
+    opts.prefs.set({ x, y })
+    idle(); kick()
+  }
   pet.addEventListener('pointerdown', e => {
     if (e.button !== 0) return
-    pet.setPointerCapture(e.pointerId)
+    try { pet.setPointerCapture(e.pointerId) } catch {}
     dragging = { sx: e.clientX, sy: e.clientY, ox: x, oy: y, moved: false, hist: [[e.clientX, e.clientY, performance.now()]] }
   })
   pet.addEventListener('pointermove', e => {
     const d = dragging; if (!d) return
+    if (!(e.buttons & 1)) return endDrag(e, true)        // 松手事件丢了：别让它跟着鼠标跑
     const dx = e.clientX - d.sx, dy = e.clientY - d.sy
-    if (!d.moved && Math.hypot(dx, dy) < 5) return
+    if (!d.moved && Math.hypot(dx, dy) < 6) return
     if (!d.moved) { d.moved = true; pet.classList.add('drag'); hideBubble(); thinking = null; closeMenu(); playAnim('drag', true) }
-    d.hist.push([e.clientX, e.clientY, performance.now()]); if (d.hist.length > 6) d.hist.shift()
+    d.hist.push([e.clientX, e.clientY, performance.now()]); if (d.hist.length > 8) d.hist.shift()
     const [ax, , at] = d.hist[0]
     const v = (e.clientX - ax) / Math.max(1, performance.now() - at) * 1000
     x = clamp(d.ox + dx, 0, W() - size); y = clamp(d.oy + dy, 0, floor())
     place(clamp(v * 0.015, -25, 25))
   })
-  pet.addEventListener('pointerup', e => {
-    const d = dragging; dragging = null; pet.classList.remove('drag')
-    if (!d) return
-    if (d.moved) {
-      const [ax, ay, at] = d.hist[0]
-      const dtm = Math.max(16, performance.now() - at) / 1000
-      vx = clamp((e.clientX - ax) / dtm, -3000, 3000); vy = clamp((e.clientY - ay) / dtm, -3000, 3000)
-      idle(); kick()
-    } else {
-      poke()
-    }
-  })
+  pet.addEventListener('pointerup', e => endDrag(e, false))
+  pet.addEventListener('pointercancel', e => endDrag(e, true))
+  pet.addEventListener('lostpointercapture', e => { if (dragging) endDrag(e, dragging.moved ? false : true) })
   pet.addEventListener('contextmenu', e => { e.preventDefault(); openMenu(e.clientX - host.getBoundingClientRect().left, e.clientY - host.getBoundingClientRect().top) })
   if (opts.onPointerArea) {
     root.addEventListener('pointerover', e => { if (e.target !== root) opts.onPointerArea(true) })
-    root.addEventListener('pointerout', e => { if (!e.relatedTarget || e.relatedTarget === root || !root.contains(e.relatedTarget)) opts.onPointerArea(false) })
+    root.addEventListener('pointerout', e => { if (!dragging && (!e.relatedTarget || e.relatedTarget === root || !root.contains(e.relatedTarget))) opts.onPointerArea(false) })
   }
 
   // ---------- 说话 ----------
@@ -335,11 +332,10 @@ export function createPet(host, opts) {
   /** 说完后底下那一排：👍 👎 + 两个这一类专属的反应。点了大肥鱼接一句；👍👎 记下来，以后这一类多说 / 少说。 */
   function addReactions(b, m) {
     const row = doc.createElement('div'); row.className = 'fy-react'
-    const pick = (arr) => arr[Math.floor(Math.random() * arr.length)]
     const opts2 = [
       ['👍', '这种好玩', () => { vote(m.kind, 1); say({ text: pick(REPLY.up), anim: 'cheer' }) }],
       ['👎', '这种没意思', () => { vote(m.kind, -1); say({ text: pick(REPLY.down), anim: 'sigh' }) }],
-      ...(REACT[m.kind] || REACT.work).map(([label, reply, anim]) => [label, null, () => reply ? say({ text: pick([].concat(reply)), anim }) : poke()]),
+      ...shuffle(REACT[m.kind] || REACT.work).slice(0, 2).map(r => [r.label, null, () => r.replies.length ? say({ text: pick(r.replies), anim: r.anim }) : poke()]),
     ]
     for (const [label, title, fn] of opts2) {
       const btn = doc.createElement('button'); btn.textContent = label; if (title) { btn.title = title; btn.className = 'emo' }
@@ -386,13 +382,13 @@ export function createPet(host, opts) {
     if (thinking) {
       thinking.nags++
       squash(1.08, 0.92, 90)
-      thinkBubble(thinking.nags === 1 ? '别催别催，本肥鱼在想' : '再催本肥鱼就忘了')
+      thinkBubble(pick(REPLY.nag))
       return
     }
     // 蹦一下，开始想
     vy = -620; vx = 0; squash(1.12, 0.86, 90); kick()
     const me = thinking = { nags: 0 }
-    thinkBubble('让本肥鱼想想')
+    thinkBubble(pick(REPLY.think))
     playAnim('file')
     const wait = new Promise(r => setTimeout(r, 700 + Math.random() * 600))
     const d = data || await load()
@@ -418,7 +414,7 @@ export function createPet(host, opts) {
     const tag = [KIND[m.kind], m.kind === 'stat' ? null : ago <= 0 ? '今天' : `${ago} 天前`].filter(Boolean).join(' · ')
     say({ text: m.text, tag: m.sensitive.length ? tag + ' · 私事' : tag, priv: m.sensitive.length > 0, anim: m.anim, react: m })
   }
-  const pick = arr => arr[Math.floor(Math.random() * arr.length)]
+
 
   // ---------- 菜单 ----------
   let menu = null, folded = null
