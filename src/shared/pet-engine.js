@@ -314,7 +314,8 @@ export function createPet(host, opts) {
     const up = y - bh - 12 > 6
     const top = up ? y + size * 0.04 - bh - 8 : y + size + 10
     bubble.classList.toggle('up', up); bubble.classList.toggle('down', !up)
-    bubble.style.transform = `translate(${left}px, ${Math.max(6, top)}px)`
+    // 用 left/top 定位，不用 transform：弹出 / 淡出动画改的是 transform，会把位置盖掉，气泡就闪到左上角
+    bubble.style.left = left + 'px'; bubble.style.top = Math.max(6, top) + 'px'
     const tx = clamp(cx - left, 18, bw - 18)
     bubble.style.setProperty('--tx', tx + 'px'); bubble.style.setProperty('--ox', tx + 'px'); bubble.style.setProperty('--oy', up ? '100%' : '0%')
   }
