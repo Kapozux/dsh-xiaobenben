@@ -34,7 +34,7 @@ export async function loadClaudeTurns({ root = SOURCE_PATHS.claude, since = 0 } 
         const t = claudeTurns(text.split('\n'), { key: file, home: os.homedir() })
         if (t.length) { sessions++; turns.push(...t) }
       } catch (err) {
-        console.warn('[dsh-agent-year] 读 Claude Code 记录失败', file, err?.message)
+        console.warn('[dsh-xiaobenben] 读 Claude Code 记录失败', file, err?.message)
       }
     }
   }

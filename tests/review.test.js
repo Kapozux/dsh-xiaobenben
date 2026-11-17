@@ -12,7 +12,7 @@ import { fakeSessionQuery } from './fixtures/light.js'
 
 const RANGE = { start: new Date(2026, 0, 1).getTime(), end: new Date(2026, 11, 31).getTime() }
 const ROUTE = { provider: 'deepseek-official', model: 'deepseek-flash' }
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'agent-year-test-'))
+const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'xiaobenben-test-'))
 const newReview = (extra = {}) => new Review({ sessionQuery: fakeSessionQuery(), store: new Store(path.join(tmp(), 'state.json')), loaders: {}, ...extra })
 
 const GOOD = JSON.stringify({

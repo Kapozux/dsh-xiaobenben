@@ -1,5 +1,5 @@
 /**
- * dsh-agent-year：Agent 年度回顾。Host 这一半。
+ * dsh-xiaobenben（小本本）：年度回顾 + 翻旧账。Host 这一半。
  * 只做三件事：读会话（ctx.sessionQuery + 用户勾选的外部来源）、开几个只读的 fetch 路由给页面、用户点头后调一次模型。
  * API 出处见 docs/dsh-api.md；这里用到的每个 ctx 服务都在那份文档里核对过。
  */
@@ -10,10 +10,10 @@ import { dshAdapter } from './llm-adapter.js'
 import { Pet } from './pet.js'
 import { PetLink } from './petlink.js'
 
-export const name = 'dsh-agent-year'
+export const name = 'dsh-xiaobenben'
 export const inject = ['sessionQuery', 'connection', 'llm', 'agentDefaultModel']
 
-/** 插件配置。改法：在 profile 的 cordis.patch.yml 里写 `- id: agent-year` + `config:`（整块替换，不是合并）。 */
+/** 插件配置。改法：在 profile 的 cordis.patch.yml 里写 `- id: xiaobenben` + `config:`（整块替换，不是合并）。 */
 export const Config = Schema.object({
   prices: Schema.array(Schema.object({
     provider: Schema.string().required().description('服务商 id，例 deepseek-official'),
@@ -26,7 +26,7 @@ export const Config = Schema.object({
   sensitiveExtra: Schema.dict(Schema.array(Schema.string())).default({}).description('额外的敏感词，按类：{ 健康: [...], 感情: [...], 成绩: [...], 家庭: [...] }'),
 })
 
-const PREFIX = '/api/agent-year.'
+const PREFIX = '/api/xiaobenben.'
 const json = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } })
 
 /**
@@ -39,8 +39,8 @@ export function apply(ctx, config = {}) {
   const pet = new Pet({ sessionQuery: ctx.sessionQuery, store })
   // 装了 dsh-pet 就在它右键「更多」里挂「翻旧账」；没装就每分钟看一眼，不打扰
   const petLink = new PetLink({ pet })
-  pet.moments().catch(err => console.warn('[dsh-agent-year] 预先翻记录失败', err))   // 启动就先翻好，第一次点不用等
-  petLink.start().catch(err => console.warn('[dsh-agent-year] 接 dsh-pet 的循环退出了', err))
+  pet.moments().catch(err => console.warn('[dsh-xiaobenben] 预先翻记录失败', err))   // 启动就先翻好，第一次点不用等
+  petLink.start().catch(err => console.warn('[dsh-xiaobenben] 接 dsh-pet 的循环退出了', err))
   ctx.on('dispose', () => petLink.stop())
   const adapter = dshAdapter(ctx.llm)
   let running = null                          // 同一时间只跑一个生成，不排队、不并发
@@ -106,7 +106,7 @@ export function apply(ctx, config = {}) {
         try {
           return json(await handler(body, request))
         } catch (err) {
-          console.warn('[dsh-agent-year]', err)
+          console.warn('[dsh-xiaobenben]', err)
           return json({ error: err?.message || String(err) }, 500)
         }
       },

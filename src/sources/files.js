@@ -132,7 +132,7 @@ export async function loadCodex(root = SOURCE_PATHS.codex) {
 export async function loadCursor(file = SOURCE_PATHS.cursor) {
   if (!fs.existsSync(file)) return { convs: [], skipped: 0 }
   const { DatabaseSync } = await import('node:sqlite')
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-year-cursor-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'xiaobenben-cursor-'))
   const copy = path.join(dir, 'state.vscdb')
   try {
     fs.copyFileSync(file, copy)

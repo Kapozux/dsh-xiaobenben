@@ -47,7 +47,7 @@ test('找到 dsh-pet 的端口、注册「翻旧账」；被点后：占住 → 
     const seq = f.calls.filter(c => !['/state', '/menu/events'].includes(c.path)).map(c => c.method + ' ' + c.path)
     assert.deepEqual(seq.slice(0, 5), ['POST /menu/item', 'POST /lock', 'POST /anim', 'POST /broadcast', 'POST /lock/release'])
     const reg = f.calls.find(c => c.path === '/menu/item')
-    assert.deepEqual(reg.body, { owner: 'dsh-agent-year', labels: ['翻旧账'] })
+    assert.deepEqual(reg.body, { owner: 'dsh-xiaobenben', labels: ['翻旧账'] })
     const anim = f.calls.find(c => c.path === '/anim')
     assert.deepEqual(anim.q, { pet: 'main', surface: 'any', lock: 'lk-1' })
     assert.equal(anim.body.name, '女仆屈膝礼仪')

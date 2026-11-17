@@ -1,5 +1,5 @@
 /**
- * dsh-agent-year 浏览器这一半：左边栏「年度回顾」整页、「翻旧账」一页；设置里一页「数据来源」。
+ * dsh-xiaobenben 浏览器这一半：左边栏「年度回顾」整页、「翻旧账」一页；设置里一页「数据来源」。
  * 槽位用法照 dsh 自带的 ui-schedule（main + sidebar.panellist）和 dsh-usage-calendar（settings.section），见 docs/dsh-api.md §2。
  * 由 tsdown.client.config.js 打成 dsh 要的 lazy-CJS factory 格式。
  */
@@ -9,8 +9,8 @@ import { Recall } from './Recall.jsx'
 import { CSS } from './style.js'
 
 export const inject = ['slots']
-const PANEL_ID = 'agent-year'
-const RECALL_ID = 'agent-year-recall'
+const PANEL_ID = 'xiaobenben'
+const RECALL_ID = 'xiaobenben-recall'
 
 function RecallIcon({ size = 20 }) {
   return (
@@ -44,11 +44,11 @@ function SourcesSection() {
 export function apply(ctx) {
   ctx.effect(() => {
     const tag = document.createElement('style')
-    tag.dataset.plugin = 'dsh-agent-year'
+    tag.dataset.plugin = 'dsh-xiaobenben'
     tag.textContent = CSS
     document.head.appendChild(tag)
     return () => tag.remove()
-  }, 'dsh-agent-year: styles')
+  }, 'dsh-xiaobenben: styles')
 
   ctx.slots.inject('main', () => ctx.slots.register({
     name: 'main',
@@ -64,7 +64,7 @@ export function apply(ctx) {
 
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',
-    id: 'agent-year',
+    id: 'xiaobenben',
     order: 60,
     label: () => '年度回顾',
   }, SourcesSection))

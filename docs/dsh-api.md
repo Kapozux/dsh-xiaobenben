@@ -94,12 +94,12 @@ dsh-session-export 就是这么用的（`ref: dsh-session-export lib/index.js:32
 打算的路由（全部只读本机，写只写插件自己的 storage）：
 
 ```
-GET  /api/agent-year.sources     各数据源：路径、是否存在、是否已勾选
-POST /api/agent-year.sources     勾选/取消（只改插件 storage）
-POST /api/agent-year.stats       统计 + 原话候选（确定性，不调模型）
-POST /api/agent-year.quote       报价：要发的全文、预计 token、模型、服务商、费用或「未计价」
-POST /api/agent-year.write       用户点头后才调模型；结果缓存
-GET  /api/agent-year.cache       读缓存（启动不重跑）
+GET  /api/xiaobenben.sources     各数据源：路径、是否存在、是否已勾选
+POST /api/xiaobenben.sources     勾选/取消（只改插件 storage）
+POST /api/xiaobenben.stats       统计 + 原话候选（确定性，不调模型）
+POST /api/xiaobenben.quote       报价：要发的全文、预计 token、模型、服务商、费用或「未计价」
+POST /api/xiaobenben.write       用户点头后才调模型；结果缓存
+GET  /api/xiaobenben.cache       读缓存（启动不重跑）
 ```
 
 ---
@@ -139,8 +139,8 @@ GET  /api/agent-year.cache       读缓存（启动不重跑）
 - `cordis.patch.yml`（`publish.md:58-62`）：
   ```yaml
   - insert:
-      - id: agent-year
-        name: dsh-agent-year
+      - id: xiaobenben
+        name: dsh-xiaobenben
         config: {}
   ```
 - 安装：`dsh plugin --profile web add <包名或 ./本地目录>`，交给 pnpm 装进 `~/.dsh/profiles/web`，自动追加到该 profile 的 `dsh.profile.bundles`；装完重启 `dsh web`（`publish.md:77-101`；calendar `README.md:89`）。卸载 `dsh plugin --profile web remove <pkg>`（`publish.md:116`）。核对 `dsh --profile web --dump-config`（`publish.md:112`）。
@@ -178,7 +178,7 @@ Node 读 SQLite：Node 22.5+ 自带 `node:sqlite`（Cursor 那份用它，不加
 
 写完后在真的 dsh 里装上跑过（单独的 DSH_HOME，无头浏览器）：
 
-1. 类型化 `ctx.remote` → 没用；`ctx.connection.fetch.register` 的 POST 路由工作正常，页面用相对路径 `fetch('api/agent-year.view')` 就带上了鉴权。
+1. 类型化 `ctx.remote` → 没用；`ctx.connection.fetch.register` 的 POST 路由工作正常，页面用相对路径 `fetch('api/xiaobenben.view')` 就带上了鉴权。
 2. `ctx.connection` 照 log-export 用 `Reflect.get` 取 → 可用。
 3. `settings.section` → 组件不用任何 props 也能挂上，设置页左栏出现「年度回顾」。
 4. `shell.overlay` → 没用。

@@ -1,7 +1,7 @@
 {
-  "name": "dsh-agent-year",
+  "name": "dsh-xiaobenben",
   "version": "0.1.0",
-  "description": "Agent 年度回顾：在 DeepSeek Harness 里看过去一年你和各个 coding agent 一起做了什么、说了什么，导出分享图。统计和原话在本机算；AI 部分点了才跑、先报价。",
+  "description": "小本本：在 DeepSeek Harness 里做 agent 年度回顾（统计和原话在本机算，AI 部分点了才跑、先报价，导出分享图），以及「翻旧账」——一次说一件你和 agent 一起干过的真事，装了 dsh-pet 可以让它亲口说。",
   "type": "module",
   "main": "src/index.js",
   "exports": {
@@ -37,10 +37,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Kapozux/dsh-agent-year.git"
+    "url": "git+https://github.com/Kapozux/dsh-xiaobenben.git"
   },
-  "homepage": "https://github.com/Kapozux/dsh-agent-year#readme",
-  "bugs": "https://github.com/Kapozux/dsh-agent-year/issues",
+  "homepage": "https://github.com/Kapozux/dsh-xiaobenben#readme",
+  "bugs": "https://github.com/Kapozux/dsh-xiaobenben/issues",
   "dependencies": {
     "@deepseek-ai/schemastery": "^3.18.4"
   },

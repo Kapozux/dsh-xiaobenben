@@ -1,6 +1,8 @@
-# dsh-agent-year · Agent 年度回顾
+# 小本本（dsh-xiaobenben）
 
-DeepSeek Harness（dsh）插件：看过去一年你和各个 coding agent 一起做了什么、说了什么，导出分享图。
+DeepSeek Harness（dsh）插件，两件事：「年度回顾」和「翻旧账」。
+
+年度回顾：看过去一年你和各个 coding agent 一起做了什么、说了什么，导出分享图。
 
 - **统计和原话在本机算**，不调模型、不花钱。
 - **AI 部分可选**：用你自己的模型额度写 3 个年度关键词、3 个奖项和 150 字以内的「这一年」。点了才跑，跑之前先报价，你点「发送」才发。
@@ -13,15 +15,15 @@ DeepSeek Harness（dsh）插件：看过去一年你和各个 coding agent 一�
 要先装 pnpm（`npm i -g pnpm`）。装预先打好的包（不用在你电脑上构建）：
 
 ```sh
-dsh plugin --profile web add https://github.com/Kapozux/dsh-agent-year/releases/download/v0.1.0/dsh-agent-year-0.1.0.tgz
+dsh plugin --profile web add https://github.com/Kapozux/dsh-xiaobenben/releases/download/v0.1.0/dsh-xiaobenben-0.1.0.tgz
 ```
 
-装完把 `dsh web` 关掉重开，左边栏会多出「年度回顾」和「翻旧账」。卸载用 `dsh plugin --profile web remove dsh-agent-year`。
+装完把 `dsh web` 关掉重开，左边栏会多出「年度回顾」和「翻旧账」。卸载用 `dsh plugin --profile web remove dsh-xiaobenben`。
 
 改代码时可以装本地目录（链接，改完 `pnpm run build` 再重开 dsh，不用重装）：
 
 ```sh
-dsh plugin --profile web add ./dsh-agent-year
+dsh plugin --profile web add ./dsh-xiaobenben
 ```
 
 ## 用法
@@ -75,7 +77,7 @@ dsh plugin --profile web add ./dsh-agent-year
 在 profile 的 `cordis.patch.yml`（例 `~/.dsh/profiles/web/cordis.patch.yml`）里写。注意 config 是整块替换，不是合并：
 
 ```yaml
-- id: agent-year
+- id: xiaobenben
   config:
     prices:            # dsh 的模型配置里没有价格；不填就只显示 token，不猜价
       - { provider: deepseek-official, model: deepseek-flash, input: 1, output: 2, currency: CNY }   # 每百万 token
@@ -84,7 +86,7 @@ dsh plugin --profile web add ./dsh-agent-year
       健康: [某个词]
 ```
 
-插件自己的状态（勾选了哪些来源、AI 结果缓存、隐藏了哪些卡）存在 `$DSH_HOME/storages/dsh-agent-year/state.json`，默认是 `~/.dsh/...`。
+插件自己的状态（勾选了哪些来源、AI 结果缓存、隐藏了哪些卡）存在 `$DSH_HOME/storages/dsh-xiaobenben/state.json`，默认是 `~/.dsh/...`。
 
 ## 开发
 
@@ -99,5 +101,5 @@ node scripts/write-light-home.mjs <目录>   # 把手造的轻度数据（只有
 - `src/core/`：统计、原话、打码、敏感、材料、AI，都不依赖 dsh。
 - `src/sources/`：dsh（经 `ctx.sessionQuery`）、Claude Code、Codex、Cursor 的读取。
 - `src/review.js`：把上面串起来。
-- `src/index.js`：dsh host 入口，注册 `/api/agent-year.*` 路由。
+- `src/index.js`：dsh host 入口，注册 `/api/xiaobenben.*` 路由。
 - `src/client/`：网页那一半，包括左边栏图标、整页、设置页和 canvas 出图。

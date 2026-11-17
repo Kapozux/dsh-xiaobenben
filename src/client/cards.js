@@ -14,7 +14,7 @@ const meta = q => `${fmtDay(q.day)}${q.time ? ` ${q.time}` : ''} · ${q.agentNam
 const visible = (items, reveal) => items.filter(q => reveal || !q.sensitive?.length)
 
 /**
- * @param {any} v  /api/agent-year.view 的结果
+ * @param {any} v  /api/xiaobenben.view 的结果
  * @param {Record<string, boolean>} reveal 哪些卡打开了敏感内容
  */
 export function buildCards(v, reveal = {}) {

@@ -1,6 +1,6 @@
 /** 页面 → host 的几个 fetch 路由（src/index.js 注册的）。相对路径，跟 dsh 自带的导出插件一样。 */
 export async function call(name, body = {}) {
-  const res = await fetch(`api/agent-year.${name}`, {
+  const res = await fetch(`api/xiaobenben.${name}`, {
     method: 'POST',
     credentials: 'same-origin',
     headers: { 'content-type': 'application/json' },

@@ -10,7 +10,7 @@ import { promisify } from 'node:util'
 import { ANIM } from './pet.js'
 
 const run = promisify(execFile)
-const OWNER = 'dsh-agent-year'
+const OWNER = 'dsh-xiaobenben'
 const LABEL = '翻旧账'
 const PREFIX = '/dsh-pet-7340'
 
@@ -23,7 +23,7 @@ async function candidatePorts() {
   try {
     const { stdout } = await run('lsof', ['-nP', '-iTCP', '-sTCP:LISTEN', '-a', '-p', String(process.pid)], { timeout: 5000 })
     for (const m of stdout.matchAll(/127\.0\.0\.1:(\d+)|\[::1\]:(\d+)|\*:(\d+)|localhost:(\d+)/g)) out.push(Number(m[1] || m[2] || m[3] || m[4]))
-  } catch (err) { if (err?.code !== 'ENOENT') console.warn('[dsh-agent-year] 查本进程端口失败', err?.message) }
+  } catch (err) { if (err?.code !== 'ENOENT') console.warn('[dsh-xiaobenben] 查本进程端口失败', err?.message) }
   out.push(3080)
   return [...new Set(out)]
 }
@@ -85,7 +85,7 @@ export class PetLink {
           await this.#sleep(this.retryMs); continue
         }
         await this.#register()
-        if (!this.connected) console.info(`[dsh-agent-year] 已接上 dsh-pet（${this.base}），右键它 → 更多 → ${LABEL}`)
+        if (!this.connected) console.info(`[dsh-xiaobenben] 已接上 dsh-pet（${this.base}），右键它 → 更多 → ${LABEL}`)
         this.connected = true; this.error = null
         while (!this.stopped) {
           const d = await this.#req('GET', `/menu/events?owner=${encodeURIComponent(OWNER)}&wait=10000`, null, 15000)
@@ -94,11 +94,11 @@ export class PetLink {
             throw new Error('查点击失败：' + (d?.reason || JSON.stringify(d)))
           }
           const petId = d.events?.[LABEL]
-          if (petId) this.#perform(petId).catch(err => console.warn('[dsh-agent-year] 让 dsh-pet 说话失败', err))
+          if (petId) this.#perform(petId).catch(err => console.warn('[dsh-xiaobenben] 让 dsh-pet 说话失败', err))
         }
       } catch (err) {
         if (this.stopped) break
-        if (this.connected) console.warn('[dsh-agent-year] 和 dsh-pet 断开了，稍后重连：', err?.message || err)
+        if (this.connected) console.warn('[dsh-xiaobenben] 和 dsh-pet 断开了，稍后重连：', err?.message || err)
         this.connected = false; this.error = err?.message || String(err); this.base = null
         await this.#sleep(Math.min(this.retryMs, 15e3))
       }
@@ -109,7 +109,7 @@ export class PetLink {
     this.stopped = true
     clearTimeout(this.sleepTimer); this.wake?.()
     if (!this.base) return
-    try { await this.#req('DELETE', `/menu/item?owner=${encodeURIComponent(OWNER)}`) } catch (err) { console.warn('[dsh-agent-year] 撤菜单项失败', err?.message) }
+    try { await this.#req('DELETE', `/menu/item?owner=${encodeURIComponent(OWNER)}`) } catch (err) { console.warn('[dsh-xiaobenben] 撤菜单项失败', err?.message) }
   }
 
   #sleep(ms) { return new Promise(r => { this.wake = r; this.sleepTimer = setTimeout(r, ms) }) }
@@ -140,14 +140,14 @@ export class PetLink {
       const name = m && ANIM[m.anim]
       if (name) {
         const a = await this.#req('POST', '/anim' + lq, { name })
-        if (!a?.ok && !a?.playbackId) console.warn('[dsh-agent-year] dsh-pet 不播这个动作', name, a?.reason)
+        if (!a?.ok && !a?.playbackId) console.warn('[dsh-xiaobenben] dsh-pet 不播这个动作', name, a?.reason)
       }
       const b = await this.#req('POST', '/broadcast' + lq, { text, duration, anim: !name })
       if (!b?.ok) throw new Error('dsh-pet 不让说：' + (b?.reason || JSON.stringify(b)))
       await new Promise(r => setTimeout(r, duration))
     } finally {
       if (lockId) {
-        try { await this.#req('POST', `/lock/release?pet=${encodeURIComponent(petId)}&surface=any`, { lockId }) } catch (err) { console.warn('[dsh-agent-year] 放开 dsh-pet 失败', err?.message) }
+        try { await this.#req('POST', `/lock/release?pet=${encodeURIComponent(petId)}&surface=any`, { lockId }) } catch (err) { console.warn('[dsh-xiaobenben] 放开 dsh-pet 失败', err?.message) }
       }
       this.busy = false
     }

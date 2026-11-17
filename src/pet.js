@@ -37,7 +37,7 @@ export class Pet {
     const have = this.cache && this.cache.key === key
     if (!fresh && have && Date.now() - this.cache.at < 10 * 60e3) return Promise.resolve(this.cache.value)
     if (!fresh && have) {
-      if (this.pending?.key !== key) this.#start(key, claudeOn).catch(err => console.warn('[dsh-agent-year] 后台重翻记录失败', err))
+      if (this.pending?.key !== key) this.#start(key, claudeOn).catch(err => console.warn('[dsh-xiaobenben] 后台重翻记录失败', err))
       return Promise.resolve(this.cache.value)
     }
     return this.#start(key, claudeOn)
@@ -65,11 +65,11 @@ export class Pet {
           const log = await this.sessionQuery.readSession(h.id)
           const t = dshTurns(h.id, h, log.events)
           if (t.length) { n++; turns.push(...t) }
-        } catch (err) { failed++; console.warn('[dsh-agent-year] 读会话失败', h.id, err?.message) }
+        } catch (err) { failed++; console.warn('[dsh-xiaobenben] 读会话失败', h.id, err?.message) }
       }
       report.push({ id: 'dsh', sessions: n, failed })
     } catch (err) {
-      console.warn('[dsh-agent-year] 列会话失败', err)
+      console.warn('[dsh-xiaobenben] 列会话失败', err)
       report.push({ id: 'dsh', error: err?.message || String(err) })
     }
     if (claudeOn) {

@@ -1,11 +1,11 @@
-# dsh-agent-year 的组合包 patch：装进 profile 后叠在 dsh-base 上。
+# dsh-xiaobenben 的组合包 patch：装进 profile 后叠在 dsh-base 上。
 # 想改配置，在你 profile 的 cordis.patch.yml 里写同一个 id（注意：config 是整块替换，不是合并）：
-#   - id: agent-year
+#   - id: xiaobenben
 #     config:
 #       prices:
 #         - { provider: deepseek-official, model: deepseek-flash, input: 1, output: 2, currency: CNY }
 #       expensiveOutputPrice: 10
 - insert:
-    - id: agent-year
-      name: dsh-agent-year
+    - id: xiaobenben
+      name: dsh-xiaobenben
       config: {}

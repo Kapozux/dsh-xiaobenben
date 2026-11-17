@@ -8,7 +8,7 @@ import { Review } from '../src/review.js'
 import { Store } from '../src/store.js'
 import { loadClaude, loadCodex } from '../src/sources/files.js'
 
-const store = new Store(path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'agent-year-local-')), 'state.json'))
+const store = new Store(path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'xiaobenben-local-')), 'state.json'))
 const review = new Review({ store, loaders: { claude: loadClaude, codex: loadCodex } })
 review.setSource('claude', true)
 review.setSource('codex', true)
