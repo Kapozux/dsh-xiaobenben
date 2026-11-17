@@ -38,7 +38,7 @@ export function Pet() {
     const syncDesktop = d => { host.style.display = d?.desktop?.on ? 'none' : '' }
     engine = createPet(host, {
       size: 300,
-      aspect: 308 / 600,
+      aspect: 360 / 600,
       prefs,
       figureSrc,
       fontSrc: asset('fonts/xbb-rounded.woff2'),

@@ -30,7 +30,7 @@ const REPLY = LINES
 const G = 2600            // 重力 px/s²
 const BOUNCE = 0.5        // 撞墙 / 落地留下的速度
 const FRICTION = 0.86     // 落地后横向每次弹跳的摩擦
-const TYPE_MS = 16        // 打字机每个字
+const TYPE_MS = 32        // 打字机每个字
 const pick = arr => arr[Math.floor(Math.random() * arr.length)]
 const shuffle = arr => arr.map(x => [Math.random(), x]).sort((a, b) => a[0] - b[0]).map(x => x[1])
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
@@ -54,7 +54,7 @@ export const EXPR = {
   idle: 'normal', work: 'thinking', file: 'thinking', yawn: 'sleepy', startle: 'surprised', drag: 'surprised',
   caught: 'shy', bow: 'shy', sigh: 'sad', cheer: 'happy', eat: 'happy', poke: 'happy',
 }
-export const FIGURES = ['normal', 'blink', 'happy', 'sad', 'surprised', 'sleepy', 'shy', 'thinking']
+export const FIGURES = ['normal', 'blink', 'happy', 'sad', 'surprised', 'sleepy', 'shy', 'thinking', 'flip-1', 'flip-2', 'flip-3', 'flip-4', 'flip-5', 'flip-6']
 
 const CSS = `
 .fy-root { position: absolute; inset: 0; pointer-events: none; overflow: hidden; font-family: "XBB Rounded", -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; }
@@ -215,6 +215,24 @@ export function createPet(host, opts) {
   }
   ready.then(() => { show(expr); blink() })
 
+  // 翻本子：点了之后先翻（2→3→4→5，记录没读完就在 4、5 之间来回翻），翻到了停在第 6 帧「看到了」
+  let flipTimer = 0
+  const hasFlip = () => !!(srcs['flip-2'] && srcs['flip-6'])
+  function flipStart() {
+    if (!hasFlip()) return false
+    clearTimeout(flipTimer); clearTimeout(exprTimer)
+    float.className = 'fy-float'; mark.textContent = ''
+    expr = 'flip'
+    const seq = ['flip-2', 'flip-3', 'flip-4', 'flip-5']
+    let i = 0
+    const tick = () => { show(seq[i]); i = i < seq.length - 1 ? i + 1 : 2; flipTimer = setTimeout(tick, 150) }
+    tick()
+    return true
+  }
+  /** 停在第 6 帧（抬头、嘴巴微张），ms 后交给台词的表情 */
+  function flipFound() { clearTimeout(flipTimer); if (expr === 'flip') show('flip-6') }
+  function flipStop() { clearTimeout(flipTimer); if (expr === 'flip') setExpr('normal') }
+
   // ---------- 物理 ----------
   const W = () => host.clientWidth, H = () => host.clientHeight
   const p0 = opts.prefs.get()
@@ -281,7 +299,7 @@ export function createPet(host, opts) {
     if (!(e.buttons & 1)) return endDrag(e, true)        // 松手事件丢了：别让它跟着鼠标跑
     const dx = e.clientX - d.sx, dy = e.clientY - d.sy
     if (!d.moved && Math.hypot(dx, dy) < 6) return
-    if (!d.moved) { d.moved = true; pet.classList.add('drag'); hideBubble(); thinking = null; closeMenu(); playAnim('drag') }
+    if (!d.moved) { d.moved = true; pet.classList.add('drag'); hideBubble(); thinking = null; flipStop(); closeMenu(); playAnim('drag') }
     d.hist.push([e.clientX, e.clientY, performance.now()]); if (d.hist.length > 8) d.hist.shift()
     const [ax, , at] = d.hist[0]
     const v = (e.clientX - ax) / Math.max(1, performance.now() - at) * 1000
@@ -348,7 +366,8 @@ export function createPet(host, opts) {
     textEl.innerHTML = ''
     positionBubble()
     const t = talk = { i: 0, typed: '', full: false, timer: 0 }
-    if (line.anim) playAnim(line.anim)
+    if (expr === 'flip') exprTimer = setTimeout(() => playAnim(line.anim || 'idle'), 900)   // 第 6 帧「看到了」先停一下
+    else if (line.anim) playAnim(line.anim)
     const paintTo = (s) => { textEl.innerHTML = parts.slice(0, t.i).map((p, k) => html(k, p)).join('') + html(t.i, s); positionBubble() }
     function startBeat() {
       if (talk !== t) return
@@ -369,7 +388,7 @@ export function createPet(host, opts) {
       t.full = true
       const isLast = t.i === parts.length - 1
       if (isLast && line.react) addReactions(b, line.react)
-      const read = Math.max(isLast ? (line.react ? 9000 : 3500) : 350, [...parts[t.i]].length * (isLast ? 110 : 25))
+      const read = Math.max(isLast ? (line.react ? 9000 : 3500) : 700, [...parts[t.i]].length * (isLast ? 110 : 40))
       t.timer = setTimeout(() => { if (isLast) { hideBubble(); idle() } else { t.i++; startBeat() } }, read)
     }
     // 鼠标停在气泡上就别收（在犹豫点哪个反应）
@@ -443,14 +462,16 @@ export function createPet(host, opts) {
     // 蹦一下，开始想
     vy = -620; vx = 0; squash(1.12, 0.86, 90); kick()
     const me = thinking = { nags: 0 }
-    thinkBubble(pick(REPLY.think))
-    setExpr('thinking')
-    const wait = new Promise(r => setTimeout(r, 250 + Math.random() * 200))
+    hideBubble()
+    const flipping = flipStart()                  // 有翻本子的帧就翻本子，不弹「想想」气泡
+    if (!flipping) { thinkBubble(pick(REPLY.think)); setExpr('thinking') }
+    const wait = new Promise(r => setTimeout(r, flipping ? 620 : 700 + Math.random() * 600))   // 至少翻完一遍
     const d = data || await load()
     await wait
     if (thinking !== me) return
     thinking = null
-    if (!d) return say({ text: '本肥鱼脑子卡住了，想不起来……（读记录失败了）', anim: 'sigh' })
+    if (flipping) { flipFound(); await new Promise(r => setTimeout(r, 380)) }   // 「看到了」，停一下再开口
+    if (!d) { flipStop(); return say({ text: '本肥鱼脑子卡住了，想不起来……（读记录失败了）', anim: 'sigh' }) }
     const pr = opts.prefs.get()
     const f = MODES.find(m => m[0] === pr.mode)?.[2] || (() => true)
     const qk = (pr.mode || 'all') + (pr.priv === false ? 0 : 1)
@@ -514,7 +535,7 @@ export function createPet(host, opts) {
   return {
     say, poke,
     destroy() {
-      cancelAnimationFrame(raf); clearTimeout(blinkTimer); clearTimeout(exprTimer); hideBubble(); closeMenu(); win.removeEventListener('resize', onResize); doc.removeEventListener('pointerdown', onDocDown, true); root.remove()
+      cancelAnimationFrame(raf); clearTimeout(blinkTimer); clearTimeout(exprTimer); clearTimeout(flipTimer); hideBubble(); closeMenu(); win.removeEventListener('resize', onResize); doc.removeEventListener('pointerdown', onDocDown, true); root.remove()
     },
   }
 }

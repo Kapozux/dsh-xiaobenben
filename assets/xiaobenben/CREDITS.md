@@ -3,7 +3,9 @@
 | 文件 | 内容 | 作者 |
 |---|---|---|
 | `turnaround.png` | 三视图原画（正面 / 侧面 / 背面，透明背景） | Kapozux，用 ChatGPT 的图像生成绘制 |
-| `normal.png` | 从三视图里裁出的正面，缩到 600px 高 | 同上（裁切、缩放：本插件） |
+| `flip-sheet.png` | 翻本子的 6 帧原画（一张横排） | 同上 |
+| `flip-1.png` … `flip-6.png` | 从 `flip-sheet.png` 切出的单帧，统一成 360×600、按脚底对齐 | 同上（切图、对齐：本插件） |
+| `normal.png` | 平时站着的样子，就是 `flip-1.png` | 同上 |
 | `blink.png` | 闭眼帧：在 `normal.png` 的眼睛位置改画成闭眼 | 同上（改画：本插件） |
 
 本文件夹里的图片按 **CC BY-NC-SA 4.0**（署名—非商业性使用—相同方式共享）授权，全文见同目录 `LICENSE`，
@@ -15,5 +17,5 @@
 
 ## 想加表情图？
 
-同目录放这些名字的透明 PNG（和 `normal.png` 同尺寸）就会自动换上，缺哪张就用 `normal.png` 加代码画的漫画符号：
+同目录放这些名字的透明 PNG（和 `normal.png` 同尺寸 360×600、脚底贴着下边、左右居中）就会自动换上，缺哪张就用 `normal.png` 加代码画的漫画符号：
 `happy.png` `sad.png` `surprised.png` `sleepy.png` `shy.png` `thinking.png`。
