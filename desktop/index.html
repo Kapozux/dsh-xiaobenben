@@ -16,9 +16,10 @@ const engine = createPet(document.getElementById('host'), {
   fontSrc: 'assets/fonts/xbb-rounded.woff2',
   figureSrc: k => { if (!seen.has(k)) seen.set(k, fetch('assets/xiaobenben/' + k + '.png', { method: 'HEAD' }).then(r => r.ok ? 'assets/xiaobenben/' + k + '.png' : null).catch(() => null)); return seen.get(k) },
   loadMoments: load,
+  loadNow: () => fetch('now.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : null),
   feedback: { load: () => fetch('feedback.json', { cache: 'no-store' }).then(r => r.json()), save: fb => fetch('feedback.json', { method: 'PUT', body: JSON.stringify(fb) }) },
   onPointerArea: inside => window.fy.hover(inside),
-  note: d => d ? `最近 ${d.days} 天 · ${d.moments.length} 句（dsh 每 10 分钟帮本肥鱼重翻一次）。` : '',
+  note: d => d ? `最近 ${d.days} 天 · ${d.moments.length} 句（dsh 每 10 分钟帮本肥鱼重翻一次；Claude Code 正在干的活她自己每 20 秒看一眼）。` : '',
   menuExtras: () => [{ label: '回到 dsh 网页里', onClick: () => window.fy.quit() }],
 })
 window.__fy = engine

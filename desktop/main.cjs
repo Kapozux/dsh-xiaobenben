@@ -15,7 +15,15 @@ else if (!app.requestSingleInstanceLock()) app.exit(0)
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'fy', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }])
 
-const STATIC = { '/index.html': 'desktop/index.html', '/pet-engine.js': 'src/shared/pet-engine.js', '/lines.js': 'src/shared/lines.js', '/chat.js': 'src/shared/chat.js', '/idle.js': 'src/shared/idle.js', '/feedback.js': 'src/shared/feedback.js' }
+const STATIC = { '/index.html': 'desktop/index.html', '/pet-engine.js': 'src/shared/pet-engine.js', '/lines.js': 'src/shared/lines.js', '/chat.js': 'src/shared/chat.js', '/idle.js': 'src/shared/idle.js', '/feedback.js': 'src/shared/feedback.js', '/live-lines.js': 'src/shared/live-lines.js' }
+
+// 读不读 Claude Code：跟「设置 → 年度回顾」里的勾一样（插件存在 state.json 的 sources.claude）
+function claudeOn() { try { return !!JSON.parse(fs.readFileSync(path.join(STATE_DIR, 'state.json'), 'utf8')).sources?.claude } catch { return false } }
+let liveMod = null
+async function liveNow() {
+  liveMod ||= import(pathToFileURL(path.join(ROOT, 'src/live.js')).toString())
+  return (await liveMod).snapshot({ claude: claudeOn() })
+}
 
 app.whenReady().then(() => {
   if (process.platform === 'darwin') app.dock?.hide()
@@ -28,6 +36,10 @@ app.whenReady().then(() => {
         try { JSON.parse(t); fs.writeFileSync(f, t); return new Response('ok') } catch (err) { console.error('[大肥鱼] 存反馈失败', err.message); return new Response(err.message, { status: 400 }) }
       })
       try { return new Response(fs.readFileSync(f), { headers: { 'content-type': 'application/json' } }) } catch { return new Response('null', { headers: { 'content-type': 'application/json' } }) }
+    }
+    if (u.pathname === '/now.json') {                  // 「现在」：Claude Code 的记录自己读（src/live.js），dsh 没开也能陪你等活
+      return liveNow().then(d => new Response(JSON.stringify(d), { headers: { 'content-type': 'application/json' } }))
+        .catch(err => { console.error('[大肥鱼] 读「现在」失败', err.message); return new Response('null', { status: 500 }) })
     }
     if (u.pathname === '/moments.json') {
       try { return new Response(fs.readFileSync(path.join(STATE_DIR, 'moments.json')), { headers: { 'content-type': 'application/json' } }) }

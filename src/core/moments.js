@@ -16,7 +16,7 @@ import { sensitiveCats } from './sensitive.js'
 export const INJECTED = ['<', '[Request interrupted', 'Another Claude session sent a message', 'This session is being continued',
   'Base directory for this skill', '# Workflow authoring reference', 'Continue from where you left off', 'Caveat: The messages below']
 export const FILLER = /^(继续|继续吧|接着|接着来|ok|okay|好|好的|行|可以|嗯|对|是|yes|go|continue|嗯嗯|好滴|没事|随便|你看着办|你决定|都行)[\s。.!！~～（(）)…]*$/i
-const COMPLAIN = /(不对|错了|又错|又是|你又|搞什么|什么鬼|还是报错|还是不行|还是不对|没用(啊|的|了|吧|[。！!？?]|$)|有什么用|乱改|别乱|不是这样|离谱|难绷|无语|哪来的|你在干嘛|干嘛呢|为什么又|怎么又|怎么还|不是让你|我不是说|白屏|挂了|崩了|\?\?|？？)/
+export const COMPLAIN = /(不对|错了|又错|又是|你又|搞什么|什么鬼|还是报错|还是不行|还是不对|没用(啊|的|了|吧|[。！!？?]|$)|有什么用|乱改|别乱|不是这样|离谱|难绷|无语|哪来的|你在干嘛|干嘛呢|为什么又|怎么又|怎么还|不是让你|我不是说|白屏|挂了|崩了|\?\?|？？)/
 const SORRY = /(你说得对|你是对的|是我的错|我的错|我搞错了|我错了|我理解错了|我看错了|抱歉|对不起|是我疏忽|我疏忽了|我漏了|我刚才.{0,8}(错|不对)|you'?re right|my mistake|i was wrong|apologi)/i
 const ASK = /(帮我|给我|你(去|来|先|把|再|直接)|修|改|加|写|做|弄|查|跑|删|换|整理|实现|接入|装|看看|试试|重构|优化|导出)/
 const DONE = /(改好了|修好了|修复了|已修复|已经修好|搞定|都过了|全过了|通过了|全部通过|已完成|完成了|做好了|写好了|加好了|弄好了|接好了|换好了|好了|没问题了|可以用了|能用了|生效了|已经(改|加|修|换|删|接|做|写|装|去掉|处理)|现在(可以|会|能|就|已经)|已(改|加|修|换|删|接|装|去掉)|fixed|done|all tests pass|works now)/i
@@ -55,6 +55,8 @@ export function claudeTurns(lines, { key, home = '' }) {
     if (!line) continue
     let o; try { o = JSON.parse(line) } catch { continue }
     if (o.type === 'ai-title' && o.aiTitle) { title = o.aiTitle; continue }
+    // 一轮做完 Claude Code 会记一条 system/turn_duration：现在在不在跑看它（core/live.js）
+    if (o.type === 'system' && o.subtype === 'turn_duration' && !o.isSidechain) { if (cur) cur.ended = true; continue }
     if (o.isSidechain || (o.type !== 'user' && o.type !== 'assistant')) continue
     const t = Date.parse(o.timestamp); if (!t) continue
     if (o.cwd) project = home && o.cwd === home ? '主目录' : base(o.cwd)
@@ -63,7 +65,7 @@ export function claudeTurns(lines, { key, home = '' }) {
       const text = typeof c === 'string' ? c : Array.isArray(c) ? c.filter(b => b?.type === 'text').map(b => b.text).join('\n') : ''
       const isResult = Array.isArray(c) && c.some(b => b?.type === 'tool_result')
       const s = text.trim()
-      if (s.startsWith('[Request interrupted')) { if (cur) { cur.interrupted = true; cur.end = t } continue }
+      if (s.startsWith('[Request interrupted')) { if (cur) { cur.interrupted = true; cur.ended = true; cur.end = t } continue }
       if (isResult || !s || INJECTED.some(p => s.startsWith(p))) { if (cur) markTurn(cur, t); continue }
       if (cur) { cur.next = s; close() } else if (turns.length) turns.at(-1).next ??= s
       cur = newTurn({ key, title, project, start: t, text: s })
@@ -71,6 +73,7 @@ export function claudeTurns(lines, { key, home = '' }) {
     }
     if (!cur) continue
     markTurn(cur, t)
+    cur.ended = false                         // 做完又被后台通知叫起来接着干：又算在跑
     const mid = o.message?.id
     if (mid && !seenMsg.has(mid) && o.message.usage) {
       seenMsg.add(mid)
@@ -140,6 +143,7 @@ export function dshTurns(id, header, events) {
       if (n === 'read') cur.reads++
       if (n.startsWith('subagent')) cur.agents++
     } else if (e.type === 'turn/end') {
+      cur.ended = true                         // 现在在不在跑（core/live.js）：最后一轮没有 turn/end 就是还在跑
       if (d.reason?.kind === 'interrupted' || d.reason?.kind === 'aborted') cur.interrupted = true
     }
   }
@@ -172,7 +176,7 @@ const len = s => [...s].length
 /** 原话：第一行、去掉里面的引号（外面由模板套一层「」，不套娃），长了在标点处截，截不到再硬截加「…」 */
 const CUSS = /他妈的?|妈的|tmd|TMD|卧槽|我操|操你|傻逼|傻b|sb(?![a-z])|SB(?![A-Z])|nmsl|靠北|fuck\w*|shit/giu
 const cjk = s => (s.match(/[\u4e00-\u9fff]/g) || []).length
-function short(s, max = 14) {
+export function short(s, max = 14) {
   const t = clean(s.split('\n')[0]).replace(/[「」『』“”"]/g, '').replace(CUSS, '××')   // 宠物冒泡不念脏话
   if (len(t) <= max) return unq(t) || t
   const cut = [...t].slice(0, max).join('')
@@ -289,7 +293,7 @@ function withContext(tpl, out, vars) {
 const quoteVars = (base, quotes, max) => [20, max, 8].map(n => ({ ...base, ...Object.fromEntries(Object.entries(quotes).map(([k, v]) => [k, short(v, n)])) }))
 /** 聊天口吻不像任务名：带你 / 我、语气词、催促，或者以标点开头 */
 const CHATTY = /[你我啊吧呢吗嘛哈呀]|^[赶快再先又还就也中的里]|^(自己|完整|这个|那个)|^[\p{P}\s]/u
-function task(tr) {
+export function task(tr) {
   // 会话标题（dsh 和 Claude Code 自己起的）比主人随口那句更像「哪件事」，先用它
   const title = tr.title && topic(tr.title)
   if (title && !/^[\p{P}\s]/u.test(title)) return title
@@ -300,7 +304,7 @@ function task(tr) {
   }
   return null
 }
-const isHuman = s => s && !INJECTED.some(p => s.startsWith(p))
+export const isHuman = s => s && !INJECTED.some(p => s.startsWith(p))
 
 const CAP = { work: 400, late: 150, report: 200, sorry: 150, complain: 150, caught: 100, stopped: 150, stat: 50 }
 

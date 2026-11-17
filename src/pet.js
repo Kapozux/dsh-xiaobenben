@@ -6,6 +6,7 @@
  */
 import { buildMoments, dshTurns } from './core/moments.js'
 import { loadClaudeTurns } from './sources/claude-turns.js'
+import { snapshot } from './live.js'
 
 export class Pet {
   /**
@@ -57,6 +58,7 @@ export class Pet {
   async #compute(key, claudeOn) {
     const since = Date.now() - this.days * 864e5
     const turns = []
+    const dshT = []
     const report = []
     try {
       const records = await this.sessionQuery.listSessions()
@@ -68,7 +70,7 @@ export class Pet {
         try {
           const log = await this.sessionQuery.readSession(h.id)
           const t = dshTurns(h.id, h, log.events)
-          if (t.length) { n++; turns.push(...t) }
+          if (t.length) { n++; turns.push(...t); dshT.push(...t) }
         } catch (err) { failed++; console.warn('[dsh-xiaobenben] 读会话失败', h.id, err?.message) }
       }
       report.push({ id: 'dsh', sessions: n, failed })
@@ -84,7 +86,32 @@ export class Pet {
     const moments = buildMoments(turns, { since, days: this.days })
     const value = { moments, report, turns: turns.filter(t => t.start >= since).length, days: this.days }
     this.cache = { key, at: Date.now(), value }
+    this.dshHistory = dshT.filter(t => t.start >= Date.now() - 8 * 864e5)
     return value
   }
 
+  /**
+   * 「现在」：在跑的活、上次停在哪……（src/live.js）。dsh 这边只读开着的会话（最多 6 个，新的在前）；Claude Code 同样只在勾了时读。
+   * 10 秒内重复问给同一份。
+   */
+  now() {
+    if (this.nowCache && Date.now() - this.nowCache.at < 10e3) return this.nowCache.promise
+    const promise = (async () => {
+      const extraRecent = []
+      try {
+        const records = (await this.sessionQuery.listSessions()).filter(r => r.live && r.header && r.header.origin !== 'subagent').slice(0, 6)
+        for (const r of records) {
+          try {
+            const log = await this.sessionQuery.readSession(r.header.id)
+            const t = dshTurns(r.header.id, r.header, log.events)
+            if (t.length) extraRecent.push({ key: r.header.id, agent: 'dsh', turns: t })
+          } catch (err) { console.warn('[dsh-xiaobenben] 读开着的会话失败', r.header.id, err?.message) }
+        }
+      } catch (err) { console.warn('[dsh-xiaobenben] 列会话失败', err?.message) }
+      return snapshot({ claude: !!this.store.read().sources?.claude, extraRecent, extraHistory: this.dshHistory || [] })
+    })()
+    this.nowCache = { at: Date.now(), promise }
+    promise.catch(() => { this.nowCache = null })
+    return promise
+  }
 }

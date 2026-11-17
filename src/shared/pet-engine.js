@@ -2,6 +2,7 @@ import { LINES } from './lines.js'
 import { CHAT, MOOD_ANIM, ANIM_MOOD } from './chat.js'
 import { IDLE } from './idle.js'
 import { emptyFeedback, normFeedback, pickRated } from './feedback.js'
+import { LIVE } from './live-lines.js'
 /**
  * 大肥鱼引擎：不依赖 React，dsh 浮层（Pet.jsx）和桌面窗口（desktop/）共用一份。
  *
@@ -185,6 +186,7 @@ const CSS = `
  *   menuExtras?: () => { label: string, onClick: () => void }[],
  *   onPointerArea?: (inside: boolean) => void,   // 桌面版：鼠标进 / 出能点的地方（切点击穿透）
  *   note?: (data: any) => string,
+ *   loadNow?: () => Promise<any>,                 // 「现在」：在跑的活、上次停在哪……（src/live.js 的 snapshot），每 20 秒取一次
  * }} opts
  */
 export function createPet(host, opts) {
@@ -742,6 +744,92 @@ export function createPet(host, opts) {
     return line
   }
 
+  // ---------- 现在：陪你等活、跑完了、你骂它、上次停在哪、半夜、年底（事实见 src/core/live.js，台词见 live-lines.js） ----------
+  const LIVE_STAGES = [[25 * 60e3, 'huge'], [10 * 60e3, 'long'], [3 * 60e3, 'wait']]
+  const livePrev = new Map()                 // 上一次看到在跑的活：key|start → { key, ms, task, dur, said }
+  let liveTicks = 0, liveData = null, livePending = null, liveBusy = false
+  /** 挑一条占位符都有值的模板填上；最近说过的先不重复 */
+  const liveSeenText = []
+  function fillLive(list, v) {
+    const ok = (list || []).filter(t => [...t.matchAll(/\{(\w+)\}/g)].every(m => v[m[1]] != null && v[m[1]] !== ''))
+    const fresh = ok.filter(t => !liveSeenText.includes(t))
+    const pool = fresh.length ? fresh : ok
+    if (!pool.length) return null
+    const t = pool[Math.floor(Math.random() * pool.length)]
+    liveSeenText.push(t); if (liveSeenText.length > 12) liveSeenText.shift()
+    return t.replace(/\{(\w+)\}/g, (_, k) => v[k])
+  }
+  const canTalk = () => !dragging && !bubble && !thinking && !menu && !folded && pet.style.display !== 'none'
+  function sayLive(l) {
+    if (!l?.text) return
+    if (!canTalk()) { livePending = { ...l, until: Date.now() + 90e3 }; return }   // 正忙（拖着、说着话、收起来了）：等会儿再说，90 秒内没机会就算了
+    livePending = null
+    say({ text: l.text, anim: l.anim, tag: l.tag })
+  }
+  async function liveTick() {
+    if (liveBusy || !opts.loadNow || opts.prefs.get().live === false || !root.getClientRects().length && !host.getClientRects().length) return
+    if (livePending) { if (Date.now() > livePending.until) livePending = null; else if (canTalk()) return sayLive(livePending) }
+    liveBusy = true
+    let d = null
+    try { d = await opts.loadNow() } catch (err) { console.warn('[小本本] 取「现在」失败', err?.message) } finally { liveBusy = false }
+    if (!d?.at) return
+    liveData = d
+    const first = liveTicks++ === 0
+    const now = Date.now(), h = new Date(now).getHours(), seen = opts.prefs.get().liveSeen || {}
+    const mark = patch => opts.prefs.set({ liveSeen: { ...(opts.prefs.get().liveSeen || {}), ...patch } })
+    const v0 = { n: d.today?.n, today: d.today?.dur, c: d.complain || null, clock: d.clock }
+    const out = []                              // [优先级, 台词]：一次只说一句，挑最要紧的
+    const busyKeys = new Set(d.busy.map(b => b.key + '|' + b.start))
+    // 跑完了：上次还在跑、这次不在了；被你按停的不说（你自己知道）
+    for (const [k, p] of livePrev) {
+      if (busyKeys.has(k)) continue
+      livePrev.delete(k)
+      const fin = d.last && d.last.key === p.key ? d.last : null
+      if (p.ms >= 2 * 60e3 && !(fin && fin.interrupted)) out.push([3, { text: fillLive(LIVE.done, { ...v0, task: p.task, dur: fin?.dur || p.dur }), anim: 'cheer', tag: '跑完了' }])
+    }
+    for (const b of d.busy) {
+      const k = b.key + '|' + b.start
+      let p = livePrev.get(k)
+      if (!p) {
+        p = { key: b.key, said: new Set() }; livePrev.set(k, p)
+        if (b.angry && !first) out.push([4, { text: fillLive(LIVE.angry, v0), anim: 'angry', tag: '站你这边' }])
+        if (first) for (const [ms, name] of LIVE_STAGES) if (b.ms >= ms) p.said.add(name)   // 她刚出来时已经跑了一阵的：不补说前面的
+      }
+      Object.assign(p, { ms: b.ms, task: b.task, dur: b.dur })
+      const st = LIVE_STAGES.find(([ms]) => b.ms >= ms)
+      if (st && !p.said.has(st[1])) {
+        for (const [ms, name] of LIVE_STAGES) if (b.ms >= ms) p.said.add(name)
+        out.push([2, { text: fillLive(LIVE[st[1]], { ...v0, task: b.task, dur: b.dur, longest: d.longest?.[b.key] }), anim: st[1] === 'huge' ? 'yawn' : 'work', tag: '陪你等' }])
+      }
+    }
+    // 上次停在哪：她刚出来时，或者新的一天早上第一次看（只说一回，同一件不说两遍）
+    const today = new Date(now).toDateString()
+    if (d.ready && (first || seen.resumeDay !== today && h >= 7) && !d.busy.length) {
+      mark({ resumeDay: today })
+      const L = d.last
+      if (L && L.task && now - L.ts > 20 * 60e3 && now - L.ts < 4 * 864e5 && seen.resume !== L.ts) {
+        mark({ resume: L.ts })
+        out.push([1, { text: fillLive(L.interrupted ? LIVE.resumeStopped : LIVE.resume, { ...v0, w: L.w, task: L.task, said: L.said }), anim: 'file', tag: '上次停在' }])
+      }
+    }
+    // 半夜：23 点到 5 点你还在干活，一晚说一次
+    const nightKey = new Date(now - 6 * 3600e3).toDateString()
+    if ((h >= 23 || h < 5) && seen.night !== nightKey && (d.busy.length || d.last && now - d.last.ts < 15 * 60e3)) {
+      mark({ night: nightKey })
+      out.push([1, { text: fillLive(LIVE.night, d.night ? { ...v0, w: d.night.w, task: d.night.task } : v0), anim: 'yawn', tag: '这个点' }])
+    }
+    // 年底：12 月到 1 月 15 日，白天一天一次
+    const mo = new Date(now).getMonth(), dd = new Date(now).getDate()
+    if ((mo === 11 || mo === 0 && dd <= 15) && h >= 9 && h < 23 && seen.year !== today) {
+      mark({ year: today })
+      out.push([0, { text: fillLive(LIVE.year, v0), anim: 'cheer', tag: '年度回顾' }])
+    }
+    const best = out.filter(x => x[1].text).sort((a, b) => b[0] - a[0])[0]
+    if (best) sayLive(best[1])
+  }
+  const liveTimer = setInterval(liveTick, 20e3)
+  const liveFirstTimer = setTimeout(liveTick, 4000)
+
   // ---------- 菜单 ----------
   let menu = null, folded = null
   function closeMenu() { if (menu) { menu.remove(); menu = null } }
@@ -760,6 +848,7 @@ export function createPet(host, opts) {
     const hl = doc.createElement('h6'); hl.textContent = '气泡停多久'; m.appendChild(hl)
     for (const [k, label] of [['short', '短'], ['normal', '默认'], ['long', '长']]) item(((pr.linger || 'normal') === k ? '● ' : '○ ') + label, (pr.linger || 'normal') === k, () => opts.prefs.set({ linger: k }))
     item((pr.quiet ? '☑' : '☐') + ' 安静一点（拖她、甩她不说话，点她照样说）', false, () => opts.prefs.set({ quiet: !pr.quiet }))
+    if (opts.loadNow) item((pr.live === false ? '☐' : '☑') + ' 陪你等活（AI 干活、跑完、你骂它时她会说）', false, () => opts.prefs.set({ live: pr.live === false }))
     item('先收起来', false, fold)
     m.appendChild(doc.createElement('hr'))
     const p = doc.createElement('p'); p.textContent = (opts.note?.(data) || '') + '都在本机算，不调模型。一碗白饭 = 5 万 token。'; m.appendChild(p)
@@ -822,6 +911,16 @@ export function createPet(host, opts) {
       case 'drop': hideBubble(); setExpr('normal'); y = 0; vy = 0; vx = 0; place(); kick(); return
       case 'home': hideBubble(); setExpr('normal'); x = W() - SW - 24; y = floor(); vx = vy = 0; place(); opts.prefs.set({ x, y }); return
       case 'feedback': return JSON.parse(JSON.stringify(fb))
+      case 'now': return liveData
+      case 'live': {           // 把某一种「现在」的话说出来看看（用真数据，缺的用假的）
+        const d = liveData || {}, b = d.busy?.[0] || { task: '登录页', dur: '12 分钟' }, L = d.last || { w: '昨天下午 3:06', task: '登录页', said: '改好了，你刷新看看' }
+        const v = { n: d.today?.n || 7, today: d.today?.dur || '3 小时', c: d.complain || 3, clock: d.clock || '1:24', task: b.task, dur: b.dur, longest: d.longest?.[b.key] || '40 分钟', w: L.w, said: L.said }
+        const map = { wait: ['work', '陪你等'], long: ['work', '陪你等'], huge: ['yawn', '陪你等'], done: ['cheer', '跑完了'], angry: ['angry', '站你这边'], resume: ['file', '上次停在'], resumeStopped: ['file', '上次停在'], night: ['yawn', '这个点'], year: ['cheer', '年度回顾'] }
+        const k = map[a.which] ? a.which : 'wait'
+        const nv = k === 'night' && d.night ? { ...v, w: d.night.w, task: d.night.task } : v
+        hideBubble(); return say({ text: fillLive(LIVE[k], nv), anim: map[k][0], tag: map[k][1] })
+      }
+      case 'livetick': return liveTick()
       case 'unrate': rateLine('撤销', a.text, 0); for (const k in queues) delete queues[k]; return true
       case 'clearfb': fb = emptyFeedback(); saveFb(); for (const k in queues) delete queues[k]; return true
       case 'reload': data = null; for (const k in queues) delete queues[k]; { const d = await load(true); return { moments: d ? d.moments.length : null } }
@@ -831,7 +930,7 @@ export function createPet(host, opts) {
   return {
     say, poke, debug,
     destroy() {
-      cancelAnimationFrame(raf); clearInterval(dragTalk); clearTimeout(fbTimer); Promise.resolve(opts.feedback?.save?.(fb)).catch(() => {}); cancelAnimationFrame(walkRaf); clearTimeout(walkTimer); walking = null; clearInterval(restTimer); clearTimeout(blinkTimer); clearTimeout(exprTimer); clearTimeout(flipTimer); hideBubble(); closeMenu(); win.removeEventListener('resize', onResize); doc.removeEventListener('pointerdown', onDocDown, true); doc.removeEventListener('keydown', onKey); root.remove()
+      cancelAnimationFrame(raf); clearInterval(liveTimer); clearTimeout(liveFirstTimer); clearInterval(dragTalk); clearTimeout(fbTimer); Promise.resolve(opts.feedback?.save?.(fb)).catch(() => {}); cancelAnimationFrame(walkRaf); clearTimeout(walkTimer); walking = null; clearInterval(restTimer); clearTimeout(blinkTimer); clearTimeout(exprTimer); clearTimeout(flipTimer); hideBubble(); closeMenu(); win.removeEventListener('resize', onResize); doc.removeEventListener('pointerdown', onDocDown, true); doc.removeEventListener('keydown', onKey); root.remove()
     },
   }
 }

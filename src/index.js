@@ -99,6 +99,9 @@ export function apply(ctx, config = {}) {
     async moments(body) {
       return pet.moments({ fresh: !!body.fresh })
     },
+    async now() {
+      return pet.now()
+    },
     async 'style.quote'(body) {
       return styler.quote({ route: body.route || currentRoute(), redo: !!body.redo })
     },

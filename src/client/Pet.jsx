@@ -44,6 +44,7 @@ export function Pet() {
       figureSrc,
       fontSrc: asset('fonts/xbb-rounded.woff2'),
       feedback: { load: () => call('feedback', {}).then(r => r.fb), save: fb => call('feedback', { fb }) },
+      loadNow: () => call('now', {}),
       loadMoments: fresh => call('moments', { fresh }).catch(e => { console.warn('[dsh-xiaobenben] 取台词失败', e); return null }),
       note: d => d ? `最近 ${d.days} 天 · ${d.report.map(r => `${r.id === 'dsh' ? 'dsh' : 'Claude Code'} ${r.sessions ?? 0} 个会话`).join(' · ')} · ${d.moments.length} 件。` : '',
       menuExtras: () => [{
