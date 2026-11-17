@@ -3,7 +3,6 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { buildMoments, claudeTurns, dshTurns, fill } from '../src/core/moments.js'
 import { TPL } from '../src/core/lines.js'
-import { LINES } from '../src/shared/lines.js'
 
 const T0 = new Date(2026, 10, 3, 14, 0).getTime()
 const min = m => T0 + m * 60e3
@@ -119,15 +118,6 @@ test('800 条模板：必须的占位符各一次；填完（含 {doing} 为空�
   }
 })
 
-test('反应：每类至少 10 个按钮、按钮 ≤6 字；👍👎 第一句是主人给的', () => {
-  for (const [k, list] of Object.entries(LINES.react)) {
-    assert.ok(list.length >= 10, k)
-    for (const r of list) assert.ok([...r.label].length <= 6, r.label)
-  }
-  assert.equal(LINES.up[0], '本肥鱼看来说的挺有道理，谢谢主人对我的鼓励！')
-  assert.equal(LINES.down[0], '呜呜呜主人，你不能这么说我')
-})
-
 test('被抓包放宽：「已经改了，刷新就能看到」+「刷新了还是没变啊」算；「你能不能用OR帮我」「没用中国模型？」不算；同一件事抄了两份只说一次', () => {
   const mk = (next, key) => dshTurns(key, { cwd: '/x/p' }, [
     { type: 'user/message', time: min(0), data: { content: [{ type: 'text', text: '帮我把按钮改成蓝色' }], source: { kind: 'user' } } },
@@ -140,4 +130,20 @@ test('被抓包放宽：「已经改了，刷新就能看到」+「刷新了还�
   assert.equal(caught(mk('你能不能用OR帮我弄转写？', 'b')).length, 0)
   assert.equal(caught(mk('抽证据卡这么贵没用中国模型？', 'c')).length, 0)
   assert.equal(caught([...mk('刷新了还是没变啊', 'd'), ...mk('刷新了还是没变啊', 'e')]).length, 1)
+})
+
+test('台词缓存：过期了先给旧的、后台重算，不让点的人等', async () => {
+  const { Pet } = await import('../src/pet.js')
+  let n = 0
+  const slow = () => new Promise(r => setTimeout(() => r({ sessions: 0, skipped: 0, turns: [] }), 50))
+  const pet = new Pet({ sessionQuery: { listSessions: async () => { n++; return [] } }, store: { read: () => ({ sources: { claude: true } }) }, loadClaude: slow })
+  const a = await pet.moments()
+  pet.cache.at -= 11 * 60e3                      // 假装过期
+  const t0 = Date.now()
+  const b = await pet.moments()
+  assert.ok(Date.now() - t0 < 20, '过期也立刻回')
+  assert.equal(b, a)
+  await new Promise(r => setTimeout(r, 100))
+  assert.equal(n, 2, '后台重算了一次')
+  assert.notEqual(pet.cache.value, a)
 })

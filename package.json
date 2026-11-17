@@ -12,7 +12,6 @@
   "files": [
     "src/**/*.js",
     "!src/client",
-    "desktop/**",
     "lib/client.js",
     "cordis.patch.yml",
     "README.md"

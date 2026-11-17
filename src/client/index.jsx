@@ -1,15 +1,26 @@
 /**
- * dsh-agent-year 浏览器这一半：左边栏一个图标 → 整页「年度回顾」；设置里一页「数据来源」。
+ * dsh-agent-year 浏览器这一半：左边栏「年度回顾」整页、「翻旧账」一页；设置里一页「数据来源」。
  * 槽位用法照 dsh 自带的 ui-schedule（main + sidebar.panellist）和 dsh-usage-calendar（settings.section），见 docs/dsh-api.md §2。
  * 由 tsdown.client.config.js 打成 dsh 要的 lazy-CJS factory 格式。
  */
 import { YearPage } from './YearPage.jsx'
 import { Sources } from './Sources.jsx'
-import { Pet } from './Pet.jsx'
+import { Recall } from './Recall.jsx'
 import { CSS } from './style.js'
 
 export const inject = ['slots']
 const PANEL_ID = 'agent-year'
+const RECALL_ID = 'agent-year-recall'
+
+function RecallIcon({ size = 20 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M5 4.5h11a3 3 0 0 1 3 3v12H8a3 3 0 0 1-3-3z" />
+      <path d="M5 16.5a3 3 0 0 1 3-3h11" />
+      <path d="M9 8.5h6" />
+    </svg>
+  )
+}
 
 function Icon({ size = 20 }) {
   return (
@@ -58,9 +69,16 @@ export function apply(ctx) {
     label: () => '年度回顾',
   }, SourcesSection))
 
-  // 大肥鱼：全应用浮层（list slot，新 id 加在旁边，不顶掉别人）
-  ctx.slots.inject('shell.overlay', () => ctx.slots.register({
-    name: 'shell.overlay',
-    id: 'agent-year-pet',
-  }, Pet))
+  // 翻旧账：一页只说一件事（没装 dsh-pet 的人从这里看；装了的右键 dsh-pet → 更多 → 翻旧账，让它亲口说）
+  ctx.slots.inject('main', () => ctx.slots.register({
+    name: 'main',
+    key: RECALL_ID,
+  }, Recall))
+
+  ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
+    name: 'sidebar.panellist',
+    id: RECALL_ID,
+    order: 31,
+    label: () => '翻旧账',
+  }, RecallIcon))
 }

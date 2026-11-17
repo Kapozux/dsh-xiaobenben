@@ -5,7 +5,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { buildMoments, RICE } from '../../src/core/moments.js'
 import { loadClaudeTurns } from '../../src/sources/claude-turns.js'
-import { ANIM, findPetAssets } from '../../src/pet.js'
+import { ANIM } from '../../src/pet.js'
 
 const HERE = path.dirname(new URL(import.meta.url).pathname)
 const OUT = path.join(HERE, 'out')
@@ -16,7 +16,9 @@ const since = Date.now() - DAYS * 864e5
 const { turns, sessions, skipped } = await loadClaudeTurns({ since })
 const moments = buildMoments(turns, { since, days: DAYS })
 
-const PET = findPetAssets(process.env.PET_ASSETS) || findPetAssets(path.join(process.env.HOME, 'dsh-try/profiles/web/node_modules/dsh-pet/assets/webm'))
+// 动画只在本机原型里借看：dsh-pet 装在哪就从哪复制（不进仓库，out/ 被 gitignore）
+const PET = [process.env.PET_ASSETS, path.join(process.env.HOME, 'dsh-try/profiles/web/node_modules/dsh-pet/assets/webm'), path.join(process.env.HOME, '.dsh/profiles/web/node_modules/dsh-pet/assets/webm')]
+  .find(d => d && fs.existsSync(path.join(d, ANIM.idle + '.webm')))
 fs.mkdirSync(path.join(OUT, 'anim'), { recursive: true })
 const anims = []
 for (const [k, name] of Object.entries(ANIM)) {
