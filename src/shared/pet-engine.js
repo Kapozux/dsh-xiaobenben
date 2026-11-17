@@ -584,7 +584,14 @@ export function createPet(host, opts) {
     for (const [label, d, msg] of [['👍', 1, '记下了，以后多说这句'], ['👎', -1, '好，这句以后不说了']]) {
       const btn = doc.createElement('button'); btn.textContent = label; btn.className = 'emo'; btn.title = d > 0 ? '这句好玩' : '这句不好'
       btn.addEventListener('pointerdown', e => e.stopPropagation())
-      btn.addEventListener('click', e => { e.stopPropagation(); rateLine(what, text, d); done(msg); if (talk) { clearTimeout(talk.timer); talk.timer = setTimeout(() => { hideBubble(); idle() }, 1500) } })
+      btn.addEventListener('click', e => {
+        e.stopPropagation(); rateLine(what, text, d)
+        // 打完分她要接一句（按这句是哪种：落地 / 被拎 / 碎碎念），然后接着聊
+        const g = LINES.rateReply[/^落地/.test(what) ? 'land' : /^(被拎|拎|被甩)/.test(what) ? 'drag' : 'idle']
+        const reply = g && pickLine(g[d > 0 ? 'up' : 'down'])
+        if (reply) say({ text: reply, anim: d > 0 ? 'proud' : 'sigh', chat: d > 0 ? 'proud' : 'sad' })
+        else { done(msg); if (talk) { clearTimeout(talk.timer); talk.timer = setTimeout(() => { hideBubble(); idle() }, 1500) } }
+      })
       row.appendChild(btn)
     }
     b.appendChild(row)
