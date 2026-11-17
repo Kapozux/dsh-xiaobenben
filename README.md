@@ -10,15 +10,19 @@ DeepSeek Harness（dsh）插件：看过去一年你和各个 coding agent 一�
 
 ## 安装
 
-要先装 pnpm（`npm i -g pnpm`）。
+要先装 pnpm（`npm i -g pnpm`）。装预先打好的包（不用在你电脑上构建）：
 
 ```sh
-dsh plugin --profile web add ~/Documents/CODEelse/dsh-agent-year
+dsh plugin --profile web add https://github.com/Kapozux/dsh-agent-year/releases/download/v0.1.0/dsh-agent-year-0.1.0.tgz
 ```
 
-装完把 `dsh web` 关掉重开，左边栏会多一个「年度回顾」。卸载用 `dsh plugin --profile web remove dsh-agent-year`。
+装完把 `dsh web` 关掉重开，左边栏会多出「年度回顾」和「翻旧账」。卸载用 `dsh plugin --profile web remove dsh-agent-year`。
 
-本地装是链接，改了代码之后只要 `pnpm run build`（改的是网页部分时）再重开 dsh，不用重装。
+改代码时可以装本地目录（链接，改完 `pnpm run build` 再重开 dsh，不用重装）：
+
+```sh
+dsh plugin --profile web add ./dsh-agent-year
+```
 
 ## 用法
 

@@ -102,7 +102,7 @@ const REQ = { work: ['task', 'dur', 'rice'], late: ['task', 'dur', 'rice'], stop
   stat_continue: ['span', 'n', 'dur'], stat_project: ['project', 'dur', 'days'], stat_longest: ['task', 'dur'], stat_busiest: ['date', 'dur'] }
 
 test('800 条模板：必须的占位符各一次；填完（含 {doing} 为空）没有残留括号、没有「，，」、不超长', () => {
-  const full = { w: '10 月 3 日中午 12:28', task: '「帮我把导入脚本重构一下」', dur: '12 分钟', doing: '，改了 4 个文件、跑了 19 条命令', rice: '小半碗', next: '还是不对啊你再看看', claim: '改好了，测试全过了', said: '你说得对，是我漏了一个分支', project: 'pdf2md-web', days: 23, files: 41, n: 37, span: '这 120 天', date: '10 月 3 日' }
+  const full = { w: '10 月 3 日中午 12:28', task: '「帮我把导入脚本重构一下」', dur: '12 分钟', doing: '，改了 4 个文件、跑了 19 条命令', rice: '小半碗', next: '还是不对啊你再看看', claim: '改好了，测试全过了', said: '你说得对，是我漏了一个分支', project: 'my-app', days: 23, files: 41, n: 37, span: '这 120 天', date: '10 月 3 日' }
   for (const [k, list] of Object.entries(TPL)) {
     assert.ok(list.length >= 25, k)
     for (const t of list) {

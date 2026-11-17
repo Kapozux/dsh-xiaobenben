@@ -14,7 +14,8 @@
     "!src/client",
     "lib/client.js",
     "cordis.patch.yml",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=22.18"
@@ -34,6 +35,12 @@
   ],
   "author": "Kapozux",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Kapozux/dsh-agent-year.git"
+  },
+  "homepage": "https://github.com/Kapozux/dsh-agent-year#readme",
+  "bugs": "https://github.com/Kapozux/dsh-agent-year/issues",
   "dependencies": {
     "@deepseek-ai/schemastery": "^3.18.4"
   },
