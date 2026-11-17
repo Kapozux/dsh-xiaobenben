@@ -8,7 +8,7 @@ import { call } from './api.js'
 import { createPet, FIGURES } from '../shared/pet-engine.js'
 
 const LS = 'dsh-xiaobenben.pet'
-const prefs = {
+export const prefs = {
   get() { try { return { mode: 'all', priv: true, ...JSON.parse(localStorage.getItem(LS) || '{}') } } catch { return { mode: 'all', priv: true } } },
   set(patch) { try { localStorage.setItem(LS, JSON.stringify({ ...prefs.get(), ...patch })) } catch {} },
 }
@@ -56,10 +56,13 @@ export function Pet() {
         },
       }],
     })
+    // 设置页「调试」发来的指令（同一个页面里的事件，不联网）
+    const onDebug = e => { const r = engine.debug(e.detail || {}); e.detail?.reply?.(r) }
+    window.addEventListener('xiaobenben:debug', onDebug)
     const poll = () => call('desktop', {}).then(syncDesktop).catch(() => {})
     poll()
     const t = setInterval(poll, 5000)       // 桌面那只「回到网页里」之后，这边要再出来
-    return () => { clearInterval(t); engine.destroy() }
+    return () => { clearInterval(t); window.removeEventListener('xiaobenben:debug', onDebug); engine.destroy() }
   }, [])
   return <div ref={ref} style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 2147483000 }} />
 }

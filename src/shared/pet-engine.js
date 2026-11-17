@@ -17,7 +17,7 @@ import { IDLE } from './idle.js'
  * 左键点一下就翻旧账；只有主人点了才说话，不自己冒出来。
  */
 
-const KIND = { work: '干活', late: '深夜', report: '汇报', sorry: '认错', complain: '挨骂', caught: '被抓包', stopped: '被喊停', stat: '总账' }
+export const KIND = { work: '干活', late: '深夜', report: '汇报', sorry: '认错', complain: '挨骂', caught: '被抓包', stopped: '被喊停', stat: '总账' }
 export const MODES = [
   ['all', '随便', () => true],
   ['week', '最近一周', m => Date.now() - m.ts < 7 * 864e5],
@@ -233,7 +233,7 @@ export function createPet(host, opts) {
   const idle = () => setExpr('normal')
   // 没人理她：3 分钟坐下翻本子，10 分钟（半夜 3 分钟）趴在本子上睡着。戳她 / 拖她就醒
   const restTimer = setInterval(() => {
-    if (dragging || bubble || thinking || !(expr === 'normal' || expr === 'sit')) return
+    if (opts.prefs.get().rest === false || dragging || bubble || thinking || !(expr === 'normal' || expr === 'sit')) return
     const quiet = Date.now() - lastActive, h = new Date().getHours()
     const want = quiet > (h < 6 ? 3 : 10) * 60e3 ? 'sleep' : quiet > 3 * 60e3 ? 'sit' : null
     if (want && want !== expr && srcs[want]) { const keep = lastActive; setExpr(want); lastActive = keep }
@@ -320,13 +320,21 @@ export function createPet(host, opts) {
   // 闲着站在地上时，每 15～50 秒在底下走一小段（60～260px，每秒 70px，4 帧每帧 160ms，往左走镜像）。
   // 戳、拖、说话、换表情都会打断；快到该坐下 / 睡觉的时候（3 分钟没人理）就不走了。
   function scheduleWalk() { clearTimeout(walkTimer); walkTimer = setTimeout(tryWalk, 15e3 + Math.random() * 35e3) }
-  function tryWalk() {
+  function tryWalk(force = 0) {
+    if (force) return walk(force)
     scheduleWalk()
+    if (opts.prefs.get().walk === false) return
     if (walking || dragging || bubble || thinking || menu || raf || expr !== 'normal' || !onFloor && y < floor() - 1 || !srcs['walk-1']) return
     if (Date.now() - lastActive > 3 * 60e3) return
+    walk(0)
+  }
+  /** 走一段：dir 1 往右、-1 往左、0 随机 */
+  function walk(dir) {
     const maxX = W() - SW
-    if (!W() || maxX < 80) return
-    let dir = Math.random() < 0.5 ? -1 : 1
+    if (!W() || maxX < 80 || !srcs['walk-1']) return
+    if (walking) setExpr('normal')
+    hideBubble()
+    dir = dir || (Math.random() < 0.5 ? -1 : 1)
     if (x + dir * 80 < 0) dir = 1
     if (x + dir * 80 > maxX) dir = -1
     const target = clamp(x + dir * (60 + Math.random() * 200), 0, maxX)
@@ -570,7 +578,7 @@ export function createPet(host, opts) {
     vy = -620; vx = 0; squash(1.12, 0.86, 90); kick()
     // 碎碎念：「只随便聊聊」时每次都是；「随便」时大约四次里一次；别的模式不说
     const pr0 = opts.prefs.get()
-    const idleOdds = pr0.mode === 'idle' ? 1 : (pr0.mode || 'all') === 'all' ? 0.25 : 0
+    const idleOdds = pr0.mode === 'idle' ? 1 : (pr0.mode || 'all') === 'all' ? (typeof pr0.idleOdds === 'number' ? pr0.idleOdds : 0.25) : 0
     if (Math.random() < idleOdds) {
       const line = pickIdle()
       if (line) return say({ text: line.text, tag: '碎碎念', anim: MOOD_ANIM[line.mood] || 'idle', chat: line.mood })
@@ -600,6 +608,9 @@ export function createPet(host, opts) {
     if (!m) {
       return say({ text: d.moments.length ? '这一类本肥鱼想不起来了……右键换一类？' : '本肥鱼还没跟主人一起干过活呢。派点活给本肥鱼？', anim: 'poke' })
     }
+    sayMoment(m)
+  }
+  function sayMoment(m) {
     const ago = Math.round((Date.now() - m.ts) / 864e5)
     const tag = [KIND[m.kind], m.kind === 'stat' ? null : ago <= 0 ? '今天' : `${ago} 天前`].filter(Boolean).join(' · ')
     say({ text: m.text, tag: m.sensitive.length ? tag + ' · 私事' : tag, priv: m.sensitive.length > 0, anim: m.anim, react: m })
@@ -658,8 +669,41 @@ export function createPet(host, opts) {
   place(); kick()
   if (p0.folded) fold()
 
+  /** 设置页「调试」用：手动触发各种样子和动作，读当前状态 */
+  async function debug(a = {}) {
+    switch (a.do) {
+      case 'state': return {
+        expr, walking: !!walking, dragging: !!dragging, talking: !!bubble, x: Math.round(x), y: Math.round(y),
+        quiet: Math.round((Date.now() - lastActive) / 1000), loaded: FIGURES.filter(n => srcs[n]).length, figures: FIGURES.length,
+        moments: data ? data.moments.length : null, kinds: data ? Object.fromEntries(Object.keys(KIND).map(k => [k, data.moments.filter(m => m.kind === k).length])) : null,
+        idle: IDLE.length, visible: !!W(),
+      }
+      case 'show': {
+        hideBubble(); thinking = null
+        const ms = a.ms ?? 4000
+        if (a.name === 'normal' || a.name in MARK || POSES.includes(a.name)) return setExpr(a.name, ms)
+        setExpr('normal'); expr = 'frame'; show(a.name)            // 单帧（眨眼、翻本子、走路）：只摆出来看
+        exprTimer = setTimeout(() => setExpr('normal'), ms); return
+      }
+      case 'poke': return poke()
+      case 'kind': {
+        const d = data || await load()
+        const list = (d?.moments || []).filter(m => m.kind === a.kind)
+        if (!list.length) return say({ text: `「${KIND[a.kind] || a.kind}」这一类本肥鱼一件都没有。`, anim: 'sigh' })
+        return sayMoment(list[Math.floor(Math.random() * list.length)])
+      }
+      case 'idle': { const l = pickIdle(); if (l) say({ text: l.text, tag: '碎碎念', anim: MOOD_ANIM[l.mood] || 'idle', chat: l.mood }); return }
+      case 'flip': hideBubble(); if (flipStart()) setTimeout(() => { flipFound(); setTimeout(flipStop, 900) }, 1500); return
+      case 'walk': return walk(a.dir || 0)
+      case 'sulk': pokes = []; sulkUntil = Date.now() + 4000; vy = -900; squash(0.8, 1.2, 160); kick(); return say({ text: pick(REPLY.angry), anim: 'angry' })
+      case 'drop': hideBubble(); setExpr('normal'); y = 0; vy = 0; vx = 0; place(); kick(); return
+      case 'home': hideBubble(); setExpr('normal'); x = W() - SW - 24; y = floor(); vx = vy = 0; place(); opts.prefs.set({ x, y }); return
+      case 'reload': data = null; for (const k in queues) delete queues[k]; { const d = await load(true); return { moments: d ? d.moments.length : null } }
+    }
+  }
+
   return {
-    say, poke,
+    say, poke, debug,
     destroy() {
       cancelAnimationFrame(raf); cancelAnimationFrame(walkRaf); clearTimeout(walkTimer); walking = null; clearInterval(restTimer); clearTimeout(blinkTimer); clearTimeout(exprTimer); clearTimeout(flipTimer); hideBubble(); closeMenu(); win.removeEventListener('resize', onResize); doc.removeEventListener('pointerdown', onDocDown, true); root.remove()
     },
