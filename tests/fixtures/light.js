@@ -33,7 +33,7 @@ export function lightSessions() {
             : PHRASES[(n++) % PHRASES.length]
       push('turn/start', { turn: k + 1 }, t)
       push('user/message', { id: `${id}-u${k}`, role: 'user', content: [{ type: 'text', text }], source: { kind: 'user' } }, t)
-      if (k === 0 && i % 2 === 0) push('session/title', { title: TITLES[i % TITLES.length], messageSeqs: [1], source: { kind: 'user' } }, t)
+      if (k === 0 && i % 2 === 0) push('session/title', { title: TITLES[i % TITLES.length], messageSeqs: [], source: { kind: 'user' } }, t)
       // 注入的上下文：同样是 user/message，但不是人说的，不能算
       if (k === 0) push('user/message', { id: `${id}-ctx`, role: 'user', content: [{ type: 'text', text: '<system-context>workspace info</system-context>' }], source: { kind: 'agent-instructions' } }, t)
       push('assistant/message', { turn: k + 1, step: 1, message: { id: `${id}-a${k}`, role: 'assistant', content: [{ type: 'text', text: '好的。' }], source: { kind: 'model', provider: 'deepseek-official', model: 'deepseek-flash' } } }, t + 30_000)

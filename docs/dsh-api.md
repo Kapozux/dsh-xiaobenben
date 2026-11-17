@@ -174,12 +174,17 @@ Node 读 SQLite：Node 22.5+ 自带 `node:sqlite`（Cursor 那份用它，不加
 
 ---
 
-## 8. 没核实的（写代码时不用，或用前先验证）
+## 8. 没核实的 → 实测结果（2026-11-17，dsh 0.2.0-rc.2）
 
-1. 第三方包能否用类型化 `ctx.remote` / `@Remote` → 不用，走 fetch 路由。
-2. `ctx.connection` 对 host 插件是不是类型化的 inject key（log-export 注入 `'connection'` 但用 `Reflect.get` 取，`index.ts:104`）→ 照它写法。
-3. `settings.section` 在 0.2.0-rc.2 给组件传哪些 props → 写时读 `client/ui-settings` 源码再定。
-4. `shell.overlay` 槽在 rc.2 是否存在（只在注释里见到）→ 不用。
-5. `readSession` 读一年日志的耗时 → 第一版实测后写进来。
-6. dsh-token-meter 有没有给插件用的数 token 接口 → 先用字符估算。
-7. Cursor `bubbleId` 的字段。
+写完后在真的 dsh 里装上跑过（单独的 DSH_HOME，无头浏览器）：
+
+1. 类型化 `ctx.remote` → 没用；`ctx.connection.fetch.register` 的 POST 路由工作正常，页面用相对路径 `fetch('api/agent-year.view')` 就带上了鉴权。
+2. `ctx.connection` 照 log-export 用 `Reflect.get` 取 → 可用。
+3. `settings.section` → 组件不用任何 props 也能挂上，设置页左栏出现「年度回顾」。
+4. `shell.overlay` → 没用。
+5. `readSession` 读 30 个会话瞬间完成；用户的真数据 dsh 部分还很少，一年量级的耗时还没测。
+6. 数 token → 仍用字符估算，标「估算」。
+7. Cursor：`bubbleId:<会话>:<消息>` 的 `type` 1 = 用户、2 = 助手，`text` 是正文，`createdAt` 是 ISO 时间；`composerData:<会话>.name` 是标题。
+8. 两种后端：用手造的轻度数据，默认配置（SQLite `openAt: never`）和 `--patch` 打开 SQLite 索引（`openAt: startup` + 文件路径）各跑一次，统计、原话、材料指纹完全一致，后者确实建了索引文件。
+9. `main` + `sidebar.panellist`（`key` / `id` 相同）→ 左边栏出现图标，点开是整页。
+10. `--patch` 是启动器参数，要写在 `web` 前面：`dsh --profile web --patch x.yml --port …`。

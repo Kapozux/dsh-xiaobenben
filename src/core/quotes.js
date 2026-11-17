@@ -58,5 +58,18 @@ export function pickQuotes(convs, opts = {}) {
   }
   const lateCard = late ? card('late', late, { time: new Date(late.t).toTimeString().slice(0, 5) }) : null
 
-  return { repeated, first, late: lateCard }
+  // 平时说的话：全年等间隔挑几句短句（轻量版式「少放数字，多放原话」用）。确定性，不随机。
+  const used = new Set([first, lateCard, ...repeated].filter(Boolean).map(c => normKey(c.text)))
+  const pool = lines.filter(l => { const n = [...l.text.trim()].length; return n >= 4 && n <= 60 && !used.has(normKey(l.text)) })
+  const extras = []
+  const seen = new Set()
+  const want = 8
+  for (let i = 0; i < pool.length && extras.length < want; i += Math.max(1, Math.floor(pool.length / want))) {
+    const k = normKey(pool[i].text)
+    if (seen.has(k)) continue
+    seen.add(k)
+    extras.push(card('extra', pool[i]))
+  }
+
+  return { repeated, first, late: lateCard, extras }
 }

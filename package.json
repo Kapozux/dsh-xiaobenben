@@ -22,9 +22,16 @@
   "scripts": {
     "build": "tsdown --config tsdown.client.config.js",
     "test": "TZ=Asia/Taipei node --test \"tests/*.test.js\"",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "check:local": "node scripts/check-local.mjs"
   },
-  "keywords": ["deepseek-harness", "dsh", "dsh-plugin", "year-in-review", "agent"],
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "year-in-review",
+    "agent"
+  ],
   "author": "Kapozux",
   "license": "MIT",
   "dependencies": {
