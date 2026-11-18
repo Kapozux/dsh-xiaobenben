@@ -1,6 +1,6 @@
 /**
  * 翻旧账的 AI 改写：报价 → 用户点「发送」→ 后台一批批跑 → 结果存本机（state.json 的 styled）。
- * 点 dsh-pet 或翻旧账那页时，有改写过的就说改写的，没有就说模板的（Pet.moments 里换）。
+ * 点小本本翻旧账时，有改写过的就说改写的，没有就说模板的（Pet.moments 里换）。
  * 同一时间只跑一个，不排队；页面关了照跑，页面轮询 status。
  */
 import { styleQuote, styleRun, cardsHash } from './core/style.js'

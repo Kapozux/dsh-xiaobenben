@@ -19,6 +19,9 @@ test('打码：路径、邮箱、key、token、内网地址', () => {
   const cases = [
     ['看下 /Users/sam/proj/.env', '看下 〔路径〕'],
     ['在 ~/Documents/x.md 里', '在 〔路径〕 里'],
+    ['@"/Users/sam/Downloads/报告 (1).pdf" 看下', '@"〔路径〕" 看下'],
+    ["打开 '~/My Files/a b.txt'", "打开 '〔路径〕'"],
+    ['cat ~/My\\ Files/a.txt 试试', 'cat 〔路径〕 试试'],
     ['C:\\Users\\sam\\a.txt 打不开', '〔路径〕 打不开'],
     ['发给 sam.lee+x@example.com', '发给 〔邮箱〕'],
     ['key 是 sk-abcdefghijklmnopqrstuvwx', 'key 是 〔密钥〕'],

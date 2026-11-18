@@ -21,7 +21,10 @@ const RULES = [
   ['内网地址', /\b(?:https?:\/\/)?(?:localhost|127(?:\.\d{1,3}){3}|10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}|169\.254(?:\.\d{1,3}){2}|0\.0\.0\.0|\[::1\])(?::\d{2,5})?(?:\/[^\s，。）)]*)?/gi],
   ['内网地址', /\b(?:https?:\/\/)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:local|internal|lan|corp|intranet)\b(?::\d{2,5})?(?:\/[^\s，。）)]*)?/gi],
   // 路径：家目录、系统目录、Windows 盘符
-  ['路径', /(?:~|\/(?:Users|home|root|var|etc|opt|private|tmp|mnt|Volumes|srv|data|workspace))(?:\/[^\s'"`，。；：！？、）)\]]+)+\/?/g],
+  // 先遮带引号的整条（文件名里有空格时，不带引号的规则只遮到空格前，后半截会露出来）
+  ['路径', /(?<=["'`])(?:~|\/(?:Users|home|root|var|etc|opt|private|tmp|mnt|Volumes|srv|data|workspace))\/[^"'`\n]+(?=["'`])/g],
+  // 不带引号的：到空白为止；「\ 」转义的空格算路径的一部分
+  ['路径', /(?:~|\/(?:Users|home|root|var|etc|opt|private|tmp|mnt|Volumes|srv|data|workspace))(?:\/(?:\\ |[^\s'"`，。；：！？、）)\]])+)+\/?/g],
   ['路径', /\b[A-Za-z]:\\(?:[^\s\\'"`，。]+\\?)+/g],
 ]
 

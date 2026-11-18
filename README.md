@@ -1,37 +1,44 @@
 # 小本本（dsh-xiaobenben）
 
-DeepSeek Harness（dsh）插件，两件事：「年度回顾」和「翻旧账」。
+住在 DeepSeek Harness（dsh）右下角的鲸鱼娘，专翻你和 AI 的旧账：点她一下，她就说一件你和 agent 一起干过的真事——几点、哪件事、你的原话、干了多久、吃了几碗白饭。
 
-年度回顾：看过去一年你和各个 coding agent 一起做了什么、说了什么，导出分享图。
+![小本本翻旧账的演示动画](https://raw.githubusercontent.com/Kapozux/dsh-xiaobenben/main/docs/demo.gif)
 
-- **统计和原话在本机算**，不调模型、不花钱。
-- **AI 部分可选**：用你自己的模型额度写 3 个年度关键词、3 个奖项和 150 字以内的「这一年」。点了才跑，跑之前先报价，你点「发送」才发。
-- **导出**：竖版长图 + 一组 3:4 分页卡片，都在浏览器里画成 PNG，不出本机。
+*演示动画：界面是重画的，台词为演示编写。*
 
-对着 dsh **0.2.0-rc.2** 开发和测试。用到的每个 dsh API 都写在 [docs/dsh-api.md](docs/dsh-api.md) 里，带源码出处。
+> 非官方插件，与 DeepSeek 无关。
+
+**隐私**：翻旧账、打分、接着聊都在本机用模板算，默认不联网、不调模型。只有你主动点「AI 年度回顾」或「让模型换个说法」，看过要发的全文并点「发送」，才会把打过码的会话标题和你说过的短句发给你自己配置的模型。agent 的回复一句都不发。
+
+另外还带一个「年度回顾」：过去一年你和各个 coding agent 做了什么、说了什么，导出分享图，见[下面](#年度回顾)。
 
 ## 安装
 
-要先装 pnpm（`npm i -g pnpm`）。装预先打好的包（不用在你电脑上构建）：
+要先装 pnpm（`npm i -g pnpm`）。两种装法，任选一种：
+
+**方法一：按名字装**
 
 ```sh
-dsh plugin --profile web add https://github.com/Kapozux/dsh-xiaobenben/releases/download/v0.1.0/dsh-xiaobenben-0.1.0.tgz
+dsh plugin --profile web add dsh-xiaobenben
 ```
 
-装完把 `dsh web` 关掉重开，左边栏会多出「年度回顾」，右下角会出现小本本。卸载用 `dsh plugin --profile web remove dsh-xiaobenben`。
+**方法二：让 dsh 自己装**。在 dsh 里发这句话：
+
+> 给当前 dsh 安装 GitHub 上最新版本的「dsh-xiaobenben」插件
+
+装完把 `dsh web` 关掉重开，右下角会出现小本本，左边栏会多出「年度回顾」。卸载用 `dsh plugin --profile web remove dsh-xiaobenben`。
+
+上面两种都不行时，可以直接装打好的包：
+
+```sh
+dsh plugin --profile web add https://github.com/Kapozux/dsh-xiaobenben/releases/download/v0.2.0/dsh-xiaobenben-0.2.0.tgz
+```
 
 改代码时可以装本地目录（链接，改完 `pnpm run build` 再重开 dsh，不用重装）：
 
 ```sh
 dsh plugin --profile web add ./dsh-xiaobenben
 ```
-
-## 用法
-
-1. 点左边栏「年度回顾」：统计和原话直接出来。
-2. 想把 Claude Code / Codex / Cursor 的记录也算进去：**设置 → 年度回顾**，逐个勾选。每一项都写着会读哪个目录；只读，不上传。Cursor 的数据库会先复制一份再读，读完删掉。
-3. 想要 AI 部分：点「看看要发什么」。报价页写明发给哪家、哪个模型，大概多少 token，要发的全文可以展开看。可以这一次单独换个模型，不改 dsh 的默认设置。点「发送」才发。结果存在本机，下次打开不重跑。
-4. 在预览里隐藏不想放进图里的卡片，然后「下载长图」或「下载 3:4 卡片」。
 
 ## 翻旧账
 
@@ -49,16 +56,37 @@ dsh plugin --profile web add ./dsh-xiaobenben
 
 ### 素材与授权
 
-- **立绘**（`assets/xiaobenben/`）：小本本鲸鱼娘 © Kapozux，用 ChatGPT 的图像生成绘制，**CC BY-NC-SA 4.0**，见该目录的 `LICENSE` 和 `CREDITS.md`。往里放 `happy.png`、`sad.png` 这些同尺寸透明 PNG 就会换上真的表情图。
+- **立绘**（`assets/xiaobenben/`）：小本本鲸鱼娘，Kapozux 二创（AI 辅助，用 ChatGPT 的图像生成绘制），基于角色原型「溟月」（B 站 @上善无形）与女仆版设计（B 站 @ZipZipPipe），**CC BY-NC-SA 4.0**，见该目录的 `LICENSE` 和 `CREDITS.md`。往里放 `happy.png`、`sad.png` 这些同尺寸透明 PNG 就会换上真的表情图。
 - **字体**（`assets/fonts/`）：思源柔黑 Resource Han Rounded（Cyano Hao，部分 © Adobe）的常用字子集，**SIL OFL 1.1**，见该目录的 `OFL.txt`。
 - 插件代码：MIT（根目录 `LICENSE`）。
 
+## 年度回顾
+
+年度回顾：看过去一年你和各个 coding agent 一起做了什么、说了什么，导出分享图。
+
+- **统计和原话在本机算**，不调模型、不花钱。
+- **AI 部分可选**：用你自己的模型额度写 3 个年度关键词、3 个奖项和 150 字以内的「这一年」。点了才跑，跑之前先报价，你点「发送」才发。
+- **导出**：竖版长图 + 一组 3:4 分页卡片，都在浏览器里画成 PNG，不出本机。
+
+### 用法
+
+1. 点左边栏「年度回顾」：统计和原话直接出来。
+2. 想把 Claude Code / Codex / Cursor 的记录也算进去：**设置 → 年度回顾**，逐个勾选。每一项都写着会读哪个目录；只读，不上传。Cursor 的数据库会先复制一份再读，读完删掉。
+3. 想要 AI 部分：点「看看要发什么」。报价页写明发给哪家、哪个模型，大概多少 token，要发的全文可以展开看。可以这一次单独换个模型，不改 dsh 的默认设置。点「发送」才发。结果存在本机，下次打开不重跑。
+4. 在预览里隐藏不想放进图里的卡片，然后「下载长图」或「下载 3:4 卡片」。
+
+对着 dsh **0.2.0-rc.2** 开发和测试。用到的每个 dsh API 都写在 [docs/dsh-api.md](docs/dsh-api.md) 里，带源码出处。
+
 ## 会发出去什么、不会发什么
 
-只有你在报价页点了「发送」，才会发给模型。发的只有这两样：
+只有你在报价页点了「发送」，才会发给模型。
+
+「AI 年度回顾」发的只有这两样：
 
 - 会话标题；
 - 每月最多抽 30 句你自己说过的短句（200 字以内）。
+
+「让模型换个说法」发的是旧账的事件卡：多久之前、哪件事、干了多久、几碗白饭、你回的那一句（20 字以内）。标成私事的旧账不发。
 
 发之前都会打码（路径、邮箱、key、token、内网地址）。涉及健康、感情、成绩、家庭的句子默认不发。agent 的回复一句都不发。
 

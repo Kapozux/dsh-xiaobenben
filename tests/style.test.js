@@ -1,16 +1,26 @@
 // 翻旧账的 AI 改写：核对规则 + 一批跑下来（假模型），不合格的用模板兜底。
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { checkLine, cardLine, styleRun, styleQuote, cardsHash } from '../src/core/style.js'
+import { checkLine, cardLine, outCard, styleRun, styleQuote, cardsHash } from '../src/core/style.js'
 
 const complain = { id: 'c1', kind: 'complain', ago: '一个多月前', when: '11 月 4 日凌晨', task: '合并页', said: '你到底行不行' }
 const caught = { id: 'k1', kind: 'caught', ago: '十几天前', when: '11 月 5 日下午', task: '登录页', claim: '改好了', next: '还是不行' }
 const work = { id: 'w1', kind: 'work', ago: '昨天', when: '11 月 6 日上午', task: 'README写清楚', dur: '22 分钟', rice: '3 碗白饭' }
+const sorry = { id: 'y1', kind: 'sorry', ago: '5 天前', when: '11 月 2 日', task: '导入脚本', said: '你说得对，是我漏了' }
 const stat = { id: 's1', kind: 'stat', stat: '喊继续', ago: '这 120 天里', times: '61 次「继续」', dur: '5 小时' }
 
 test('卡片一行：原话带「」，事实带名字', () => {
   assert.equal(cardLine(complain), 'id=c1 | 挨骂 | 多久之前：一个多月前 | 事：合并页 | 主人的原话「你到底行不行」')
   assert.match(cardLine(stat), /总账：喊继续/)
+})
+
+test('agent 说过的话一句都不发：被抓包去掉 claim，认错 / 交差去掉 said；主人的原话留着', () => {
+  assert.equal(cardLine(caught), 'id=k1 | 被抓包 | 多久之前：十几天前 | 事：登录页 | 主人回「还是不行」')
+  assert.equal(cardLine(sorry), 'id=y1 | 认错 | 多久之前：5 天前 | 事：导入脚本')
+  assert.deepEqual(outCard(complain), complain)
+  const q = styleQuote([caught, sorry], { provider: 'p', model: 'm' })
+  assert.doesNotMatch(q.prompt, /改好了|是我漏了/)
+  assert.match(q.prompt, /还是不行/)
 })
 
 test('核对：原话要一字不差、数字只能来自卡片、≤50 字、不是对话体', () => {
@@ -22,7 +32,9 @@ test('核对：原话要一字不差、数字只能来自卡片、≤50 字、�
   assert.match(checkLine(complain, '一个多月前，「你到底行不行」，我大肥鱼觉得' + '本鱼'.repeat(60)), /超过 \d+/)
   assert.match(checkLine(complain, '11 月 4 日凌晨，你冲我说「你到底行不行」，我大肥鱼表示理解。'), /没以「一个多月前」开头/)
   assert.match(checkLine(complain, '一个多月前，你冲我说「你到底行不行」，本鱼缩成一团。'), /没有大肥鱼的看法/)
-  assert.equal(checkLine(caught, '十几天前，我拍胸脯说「改好了」，你回「还是不行」，我大肥鱼承认那句话说早了。'), null)
+  assert.equal(checkLine(caught, '十几天前，登录页我说弄好了，你回「还是不行」，我大肥鱼承认那句话说早了。'), null)
+  assert.match(checkLine(caught, '十几天前，我拍胸脯说「改好了」，你回「还是不行」，我大肥鱼承认那句话说早了。'), /不是卡片里的原话/)
+  assert.equal(checkLine(sorry, '5 天前，导入脚本那次我跟你认了错，我大肥鱼知道错了。'), null)
   assert.equal(checkLine(work, '昨天你让我把 README写清楚，22 分钟，3 碗白饭下肚，我大肥鱼觉得值。'), null)
   assert.equal(checkLine(stat, '这 120 天里你喊了 61 次「继续」，我大肥鱼觉得你离不开我。'), null)
 })
@@ -35,7 +47,7 @@ test('跑一批：合格的收下，不合格的记原因（用模板兜底）�
     assert.match(prompt, /id=c1/)
     return { text: JSON.stringify({ lines: [
       { id: 'c1', text: '一个多月前，你在合并页抱怨「你到底行不行」，我大肥鱼表示理解，嘿咻。' },
-      { id: 'k1', text: '十几天前，我说「改好了」，你回「根本不行」，我大肥鱼承认。' },                // 原话被改了
+      { id: 'k1', text: '十几天前，我说弄好了，你回「根本不行」，我大肥鱼承认。' },                // 原话被改了
     ] }), usage: { input: 10, output: 10 } }
   }
   const r = await styleRun({ adapter, cards: [complain, caught, work], route: { provider: 'p', model: 'm' } })

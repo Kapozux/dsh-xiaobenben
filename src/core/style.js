@@ -21,15 +21,15 @@ export const STYLE_SYSTEM = `你是「大肥鱼」——用户的 coding agent�
 - 结尾是看法，用「我大肥鱼觉得 / 认为 / 琢磨着 / 承认 / 表示理解……」开头，是对这件事的评价或感想，不是单纯的动作。
 按类型参考（只示意骨架，不要照抄措辞）：
 - 挨骂：「一个多月前，你在合并页那摊事上冲我说「你到底行不行」，我大肥鱼表示理解，那会儿你肯定很急。」
-- 交差：「大半个月前，合并页忙了 22 分钟，我最后告诉你「两件都改好了」，我大肥鱼觉得那次收尾挺漂亮。」
-- 认错：「5 天前，导入脚本那次我说「你说得对，是我漏了」，我大肥鱼知道错了，不是故意的。」
-- 被抓包：「十几天前，我拍胸脯说「改好了」，你回「还是不行」，我大肥鱼承认那句话说早了。」
+- 交差：「大半个月前，合并页忙了 22 分钟才交差，我大肥鱼觉得那次收尾挺漂亮。」
+- 认错：「5 天前，导入脚本那次我跟你认了错，我大肥鱼知道错了，不是故意的。」
+- 被抓包：「十几天前，登录页我说弄好了，你回「还是不行」，我大肥鱼承认那句话说早了。」
 - 被喊停：「昨天我正弄 README，你喊「先停一下」，我大肥鱼觉得你叫停得对。」
 - 熬夜：「两个多月前的凌晨 1:02，你还拉着我弄演示数据，我大肥鱼认为那晚你真该早点睡。」
 - 总账：「这 120 天里你喊了 61 次「继续」，我大肥鱼觉得你是真的离不开我，嘿咻。」
 
 硬规矩（程序会逐句检查，不合格的整句作废）：
-1. 卡片里的原话要用「」原样引用，一个字都不能改、不能删、不能加；一句台词最多引一句原话（被抓包可以两句：大肥鱼说的和主人回的）。卡片里没有原话就不引。
+1. 卡片里的原话要用「」原样引用，一个字都不能改、不能删、不能加；一句台词最多引一句原话。卡片里只有主人说过的话，大肥鱼自己说过的话不在卡片里，不要编、不要加引号；卡片里没有原话就不引。
 2. 只用卡片里的事实和数字，不编任何卡片里没有的事、数字、时间。
 3. 每句不超过 ${MAX_WIDTH} 个字（不算空格），一句话或两个短句，不换行。
 4. 只有大肥鱼在说：不写对话体，不写「主人：」「本肥鱼：」这样的说话人标签，不用 emoji。
@@ -42,10 +42,23 @@ const KIND = { work: '干活', late: '熬夜干活', stopped: '被喊停', caugh
 const LABEL = { ago: '多久之前', clock: '钟点', task: '事', dur: '时长', rice: '吃了', did: '干了', said: '原话', next: '主人回', claim: '大肥鱼说', span: '范围', times: '次数', project: '项目', days: '天数', files: '文件', date: '日期' }
 const WHO = { complain: '主人的原话', sorry: '大肥鱼的原话', report: '大肥鱼最后的原话' }
 /** 卡片里算「原话」的字段：引号里只能是它们 */
-const QUOTES = ['said', 'next', 'claim']
+const QUOTES = ['said', 'next']
+/** 这几类的 said 是 agent 自己说的话 */
+const AGENT_SAID = new Set(['sorry', 'report'])
+
+/**
+ * 真正发给模型的卡片：agent 说过的话一句都不发。
+ * 去掉 claim（被抓包时大肥鱼说的那句），认错 / 交差的 said（大肥鱼的原话）也去掉；主人的原话留着。
+ */
+export function outCard(c) {
+  const { claim, ...rest } = c
+  if (AGENT_SAID.has(c.kind)) delete rest.said
+  return rest
+}
 
 /** 一张卡片 → 一行文字（报价页显示的、真正发的，都是这个） */
-export function cardLine(c) {
+export function cardLine(card) {
+  const c = outCard(card)
   const parts = [`id=${c.id}`, c.kind === 'stat' ? `总账：${c.stat}` : KIND[c.kind]]
   for (const [k, label] of Object.entries(LABEL)) {
     if (c[k] == null) continue
@@ -84,7 +97,8 @@ export function styleQuote(cards, route, prices = []) {
 }
 
 /** 核对一句：不合格返回原因，合格返回 null */
-export function checkLine(card, text) {
+export function checkLine(full, text) {
+  const card = outCard(full)                         // 只认发出去的那些：模型没见过的原话，引了就是编的
   if (typeof text !== 'string' || !text.trim()) return '空的'
   const t = text.trim()
   if (/\n/.test(t)) return '有换行'
@@ -102,7 +116,7 @@ export function checkLine(card, text) {
     return `引号里的「${q}」不是卡片里的原话`
   }
   const quoted = spans.filter(q => quotes.includes(q))
-  if (quoted.length > (card.kind === 'caught' ? 2 : 1)) return '引了太多句原话'
+  if (quoted.length > 1) return '引了太多句原话'
   const master = card.kind === 'caught' || card.kind === 'stopped' ? card.next : card.said
   if (master && !quoted.includes(master)) return '没引卡片里的原话'
   // 数字只能来自卡片

@@ -1,5 +1,5 @@
 /**
- * dsh-xiaobenben 浏览器这一半：左边栏「年度回顾」整页；设置里一页「数据来源」+「翻旧账（dsh-pet）」。
+ * dsh-xiaobenben 浏览器这一半：左边栏「年度回顾」整页；设置里一页「数据来源」+「翻旧账」。
  * 槽位用法照 dsh 自带的 ui-schedule（main + sidebar.panellist）和 dsh-usage-calendar（settings.section），见 docs/dsh-api.md §2。
  * 由 tsdown.client.config.js 打成 dsh 要的 lazy-CJS factory 格式。
  */
