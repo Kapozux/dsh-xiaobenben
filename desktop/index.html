@@ -12,7 +12,7 @@ const prefs = {
 const seen = new Map()
 const load = () => fetch('moments.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(d => d?.moments ? d : null).catch(e => { console.error('读台词失败', e); return null })
 const engine = createPet(document.getElementById('host'), {
-  size: 340, aspect: 480 / 680, prefs,
+  size: 340, aspect: 576 / 680, prefs,
   fontSrc: 'assets/fonts/xbb-rounded.woff2',
   figureSrc: k => { if (!seen.has(k)) seen.set(k, fetch('assets/xiaobenben/' + k + '.png', { method: 'HEAD' }).then(r => r.ok ? 'assets/xiaobenben/' + k + '.png' : null).catch(() => null)); return seen.get(k) },
   loadMoments: load,

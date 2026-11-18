@@ -84,12 +84,12 @@ const CSS = `
 @keyframes fy-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 /* 表情：没有单独表情图时，用代码加漫画符号 + 身体动作 */
 .fy-fig { position: relative; width: 100%; height: 100%; transform-origin: 50% 100%; }
-.fy-mark { position: absolute; left: 70%; top: 4%; font-weight: 700; font-size: 26px; line-height: 1; color: #2a241d; pointer-events: none; white-space: nowrap; opacity: 0; }
+.fy-mark { position: absolute; left: 70%; top: 5%; font-weight: 700; font-size: 26px; line-height: 1; color: #2a241d; pointer-events: none; white-space: nowrap; opacity: 0; }
 .fy-e-happy .fy-mark, .fy-e-surprised .fy-mark, .fy-e-sleepy .fy-mark, .fy-e-shy .fy-mark, .fy-e-sad .fy-mark, .fy-e-thinking .fy-mark,
 .fy-e-eat .fy-mark, .fy-e-pout .fy-mark, .fy-e-proud .fy-mark { opacity: 1; }
 .fy-e-eat .fy-mark { color: #e0568a; animation: fy-note 1s ease-in-out infinite; }
 .fy-e-eat .fy-fig { animation: fy-hop .4s ease-in-out 3; }
-.fy-e-pout .fy-mark { color: #e5484d; left: 68%; top: 10%; animation: fy-pop .2s ease-out; }
+.fy-e-pout .fy-mark { color: #e5484d; left: 68%; top: 12%; animation: fy-pop .2s ease-out; }
 .fy-e-pout .fy-fig { animation: fy-wiggle .25s ease-in-out 4; }
 .fy-e-proud .fy-mark { color: #e0a800; animation: fy-note 1.2s ease-in-out infinite; }
 .fy-e-proud .fy-fig { animation: fy-hop .5s ease-in-out 1; }
@@ -99,10 +99,10 @@ const CSS = `
 .fy-e-surprised .fy-fig { animation: fy-jump .35s ease-out; }
 .fy-e-sleepy .fy-mark { color: #5b6bbf; animation: fy-zz 2.4s ease-in-out infinite; }
 .fy-e-sleepy .fy-fig { animation: fy-sway 3s ease-in-out infinite; }
-.fy-e-shy .fy-mark { left: 31%; top: 34%; font-size: 15px; color: #f07a8c; letter-spacing: -2px; }
+.fy-e-shy .fy-mark { left: 31%; top: 40%; font-size: 15px; color: #f07a8c; letter-spacing: -2px; }
 .fy-e-shy .fy-mark::after { content: "///"; position: absolute; left: 66px; }
 .fy-e-shy .fy-fig { animation: fy-wiggle .6s ease-in-out 2; }
-.fy-e-sad .fy-mark { color: #4ea3e8; left: 74%; top: 22%; animation: fy-drop 1.4s ease-in infinite; }
+.fy-e-sad .fy-mark { color: #4ea3e8; left: 74%; top: 26%; animation: fy-drop 1.4s ease-in infinite; }
 .fy-e-sad .fy-fig { transform: translateY(4px) scale(1, .97); transition: transform .3s; }
 .fy-e-thinking .fy-mark { color: #8a8175; animation: fy-note 1.6s ease-in-out infinite; }
 @keyframes fy-note { 0%, 100% { transform: translateY(0) rotate(-8deg); } 50% { transform: translateY(-8px) rotate(8deg); } }

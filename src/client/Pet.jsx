@@ -39,7 +39,7 @@ export function Pet() {
     const syncDesktop = d => { host.style.display = d?.desktop?.on ? 'none' : '' }
     engine = createPet(host, {
       size: 340,
-      aspect: 480 / 680,
+      aspect: 576 / 680,
       prefs,
       figureSrc,
       fontSrc: asset('fonts/xbb-rounded.woff2'),
