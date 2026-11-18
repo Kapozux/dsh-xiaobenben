@@ -28,7 +28,8 @@ export const Config = Schema.object({
     currency: Schema.string().default('USD'),
   })).default([]).description('价格表。dsh 的模型配置里没有价格；不填就只显示 token 数，不猜价。'),
   expensiveOutputPrice: Schema.number().default(0).description('输出价格（每百万 token）高于这个数就提示「可以换便宜的模型」；0 = 不提示'),
-  electronPath: Schema.string().default('').description('大肥鱼桌面版用的 Electron.app 路径；空 = 自动找本机 Electron 下载缓存'),
+  electronPath: Schema.string().default('').description('大肥鱼桌面版用的 Electron.app 路径；空 = 自动找本机已有的，没有就下载'),
+  electronMirror: Schema.string().default('').description('下载 Electron 用的镜像；空 = https://npmmirror.com/mirrors/electron/'),
   sensitiveExtra: Schema.dict(Schema.array(Schema.string())).default({}).description('额外的敏感词，按类：{ 健康: [...], 感情: [...], 成绩: [...], 家庭: [...] }'),
 })
 
@@ -51,7 +52,7 @@ export function apply(ctx, config = {}) {
   const store = new Store()
   const review = new Review({ sessionQuery: ctx.sessionQuery, store, config })
   const pet = new Pet({ sessionQuery: ctx.sessionQuery, store })
-  const desktop = new Desktop({ store, pet, electron: config.electronPath || '' })
+  const desktop = new Desktop({ store, pet, electron: config.electronPath || '', mirror: config.electronMirror || '' })
   desktop.resume()
   pet.moments().catch(err => console.warn('[dsh-xiaobenben] 预先翻记录失败', err))   // 启动就先翻好，第一次点不用等
   const adapter = dshAdapter(ctx.llm)

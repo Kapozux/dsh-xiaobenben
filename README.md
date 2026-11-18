@@ -8,7 +8,7 @@
 
 > 非官方插件，与 DeepSeek 无关。
 
-**隐私**：翻旧账、打分、接着聊都在本机用模板算，默认不联网、不调模型。只有你主动点「AI 年度回顾」或「让模型换个说法」，看过要发的全文并点「发送」，才会把打过码的会话标题和你说过的短句发给你自己配置的模型。agent 的回复一句都不发。
+**隐私**：翻旧账、打分、接着聊都在本机用模板算，不调模型，聊天记录不出本机。只有你主动点「AI 年度回顾」或「让模型换个说法」，看过要发的全文并点「发送」，才会把打过码的会话标题和你说过的短句发给你自己配置的模型。agent 的回复一句都不发。插件自己只在一种情况下联网：你点「放到桌面上」而本机没有 Electron 时，会下载一份（约 120 MB，默认走 npmmirror 镜像），不带任何你的数据。
 
 另外还带一个「年度回顾」：过去一年你和各个 coding agent 做了什么、说了什么，导出分享图，见[下面](#年度回顾)。
 
@@ -31,7 +31,7 @@ dsh plugin --profile web add dsh-xiaobenben
 上面两种都不行时，可以直接装打好的包：
 
 ```sh
-dsh plugin --profile web add https://github.com/Kapozux/dsh-xiaobenben/releases/download/v0.2.0/dsh-xiaobenben-0.2.0.tgz
+dsh plugin --profile web add https://github.com/Kapozux/dsh-xiaobenben/releases/download/v0.2.1/dsh-xiaobenben-0.2.1.tgz
 ```
 
 改代码时可以装本地目录（链接，改完 `pnpm run build` 再重开 dsh，不用重装）：
@@ -44,6 +44,8 @@ dsh plugin --profile web add ./dsh-xiaobenben
 
 右下角的小本本鲸鱼娘：**左键点一下**，她就翻一件你和 agent 一起干过的真事——派的活干了多久、被你喊停、说好了却挨骂、认错、深夜加班、总账……
 说完气泡底下有 3 个按钮：两个这一类的反应（点了她接一句）和「再翻一件」。抓起来能甩；右键有菜单：说哪一类、藏起私事、**放到桌面上**（关了网页也在）、先收起来。
+
+「放到桌面上」目前只支持 macOS，要用 Electron 开一个透明窗口：本机有现成的（比如装过 dsh-pet）就直接用；没有会自动下载 Electron 43.3.0，下载时她会报进度，下完自己上桌面。镜像可以在插件配置的 `electronMirror` 或环境变量 `XBB_ELECTRON_MIRROR` 里换，也可以在 `electronPath` 里直接填一个 Electron.app 的路径。
 
 事实（什么时候、在哪件事上、一句原话、多少分钟多少碗白饭）由程序从会话记录里判断、算出来；说法有两种：
 

@@ -156,7 +156,7 @@ function DebugSection() {
   const setPref = patch => { prefs.set(patch); setPr(prefs.get()) }
   const desktop = on => {
     setDeskBusy(true); setMsg('')
-    call('desktop', { on }).then(d => { setDesk(d.desktop); if (on && !d.desktop?.on) setMsg('上不了桌面：' + (d.desktop?.error || '不知道为什么')) })
+    call('desktop', { on }).then(d => { setDesk(d.desktop); if (on && !d.desktop?.on && !d.desktop?.downloading) setMsg('上不了桌面：' + (d.desktop?.error || '不知道为什么')) })
       .catch(e => setMsg(e.message)).finally(() => setDeskBusy(false))
   }
   const act = (detail, label) => { setMsg(''); pet(detail).then(r => { if (r === undefined) setMsg('挂件没在这个页面上（桌面版开着时网页这只是藏着的）'); else if (label && r) setMsg(label(r)) }) }
@@ -181,7 +181,8 @@ function DebugSection() {
         <h3 style={{ margin: '14px 0 6px', fontSize: 14 }}>桌面版</h3>
         <p className="ay-small ay-muted">
           {desk ? (desk.on ? '在桌面上（网页这只藏起来了，下面的按钮要先收回来才看得到）。' : '没开。') : '…'}
-          {desk?.error && !desk.on ? ` 上次出错：${desk.error}` : ''}
+          {desk?.downloading ? ` ${desk.downloading}，下完自己上桌面。` : ''}
+          {desk?.error && !desk.on && !desk.downloading ? ` 上次出错：${desk.error}` : ''}
         </p>
         <div>
           {!desk?.on && <B disabled={deskBusy} onClick={() => desktop(true)}>{deskBusy ? '启动中…' : '放到桌面上'}</B>}
