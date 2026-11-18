@@ -73,10 +73,17 @@ export const POSES = Object.keys(POSE_FALLBACK)
 const LINGER = { short: 0.45, normal: 1, long: 1.7 }
 export const FIGURES = ['normal', 'blink', 'happy', 'sad', 'surprised', 'sleepy', 'shy', 'thinking', 'eat', 'pout', 'proud', ...POSES, 'head', 'walk-1', 'walk-2', 'walk-3', 'walk-4', 'flip-1', 'flip-2', 'flip-3', 'flip-4', 'flip-5', 'flip-6']
 
+/** 鼠标停在她身上时的提示。要短：在立绘宽度（最小 141px）里一行放得下 */
+export const HINT = '点我翻旧账 · 可以拖'
+
 const CSS = `
 .fy-root { position: absolute; inset: 0; pointer-events: none; overflow: hidden; font-family: "XBB Rounded", -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; }
 .fy-pet { position: absolute; left: 0; top: 0; pointer-events: auto; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; will-change: transform; }
 .fy-pet.drag { cursor: grabbing; }
+/* 提示条：自己画，不用浏览器的 title（那个会被窗口边缘截断）。整条都在立绘的宽度以内，一行，不换行 */
+.fy-hint { position: absolute; left: 50%; bottom: 2px; transform: translateX(-50%); max-width: calc(100% - 8px); box-sizing: border-box; padding: 3px 10px 4px; border-radius: 999px; border: 1.5px solid #2a241d; background: #fffdf8; color: #2a241d; font-size: 12px; line-height: 1.4; font-weight: 600; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .15s; }
+.fy-pet:hover .fy-hint { opacity: 1; transition-delay: .5s; }
+.fy-pet.drag .fy-hint { opacity: 0; transition-delay: 0s; }
 .fy-body { width: 100%; height: 100%; transform-origin: 50% 100%; transition: transform .16s cubic-bezier(.3,1.6,.5,1); }
 .fy-float { width: 100%; height: 100%; animation: fy-float 3.2s ease-in-out infinite; }
 .fy-pet.drag .fy-float { animation-play-state: paused; }
@@ -162,6 +169,7 @@ const CSS = `
 @media (prefers-color-scheme: dark) {
   .fy-bubble, .fy-menu, .fy-dot, .fy-bubble::after { background: #262a33; color: #f1ece4; border-color: #f1ece4; }
   .fy-bubble, .fy-menu, .fy-dot { box-shadow: 3px 4px 0 rgba(0,0,0,.55); }
+  .fy-hint { background: #262a33; color: #f1ece4; border-color: #f1ece4; }
   .fy-tag { background: #f1ece4; color: #262a33; }
   .fy-text .fy-q { color: #8ea6ff; }
   .fy-text .fy-m { color: #fdba74; }
@@ -198,10 +206,11 @@ export function createPet(host, opts) {
     const st = doc.createElement('style'); st.id = 'fy-style'; st.textContent = font + CSS; doc.head.appendChild(st)
   }
   const root = doc.createElement('div'); root.className = 'fy-root'; host.appendChild(root)
-  const pet = doc.createElement('div'); pet.className = 'fy-pet'; pet.style.width = SW + 'px'; pet.style.height = size + 'px'; pet.title = '点一下翻旧账；抓起来甩；右键有菜单'
+  const pet = doc.createElement('div'); pet.className = 'fy-pet'; pet.style.width = SW + 'px'; pet.style.height = size + 'px'; pet.setAttribute('aria-label', HINT)
+  const hint = doc.createElement('div'); hint.className = 'fy-hint'; hint.textContent = HINT
   const shadow = doc.createElement('div'); shadow.className = 'fy-shadow'
   const body = doc.createElement('div'); body.className = 'fy-body'
-  pet.append(shadow, body); root.appendChild(pet)
+  pet.append(shadow, body, hint); root.appendChild(pet)
 
   // ---------- 形象：PNG + 代码动画 ----------
   const float = doc.createElement('div'); float.className = 'fy-float'
