@@ -31,7 +31,7 @@ dsh plugin --profile web add dsh-xiaobenben
 上面两种都不行时，可以直接装打好的包：
 
 ```sh
-dsh plugin --profile web add https://github.com/Kapozux/dsh-xiaobenben/releases/download/v0.2.1/dsh-xiaobenben-0.2.1.tgz
+dsh plugin --profile web add https://github.com/Kapozux/dsh-xiaobenben/releases/download/v0.2.2/dsh-xiaobenben-0.2.2.tgz
 ```
 
 改代码时可以装本地目录（链接，改完 `pnpm run build` 再重开 dsh，不用重装）：
