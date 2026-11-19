@@ -68,8 +68,9 @@ const FIG_LABEL = {
   normal: '平时', blink: '眨眼', happy: '开心', sad: '委屈', surprised: '吃惊', sleepy: '犯困', shy: '害羞', thinking: '思考', eat: '吃饭', pout: '鼓脸', proud: '得意',
   write: '记账', count: '数饭碗', hide: '本子挡脸', accuse: '翻本子质问', spout: '喷水欢呼', bow: '鞠躬',
   dangle: '被拎起', land: '落地', sit: '坐着翻本子', sleep: '趴着睡', sulk: '背对生闷气', wave: '挥手',
+  'curl-1': '缩成一团', 'curl-2': '把头埋起来', 'tail-1': '摇尾巴 1', 'tail-2': '摇尾巴 2', halt: '举着笔僵住', full: '摸肚子', headpat: '求摸头', mutter: '小声嘀咕', close: '合上本子', pause: '翻页的手停住', peek: '探头',
 }
-const figLabel = n => FIG_LABEL[n] || n.replace(/^flip-(\d)$/, '翻本子 $1').replace(/^walk-(\d)$/, '走路 $1')
+const figLabel = n => FIG_LABEL[n] || n.replace(/^flip-(\d)$/, '翻本子 $1').replace(/^walk-(\d)$/, '走路 $1').replace(/^fx-/, '特效 ')
 
 /** 给挂件发一条指令（同一页面里的事件）；挂件不在这个页面上就 3 秒后得到 undefined */
 function pet(detail) {
@@ -165,7 +166,7 @@ function DebugSection() {
 
         <h3 style={{ margin: '14px 0 6px', fontSize: 14 }}>每一张立绘（摆 4 秒）</h3>
         <div style={{ opacity: hidden ? 0.5 : 1 }}>
-          {FIGURES.map(n => <B key={n} onClick={() => act({ do: 'show', name: n })}>{figLabel(n)}</B>)}
+          {FIGURES.filter(n => !n.startsWith('fx-')).map(n => <B key={n} onClick={() => act({ do: 'show', name: n })}>{figLabel(n)}</B>)}
         </div>
         <FeedbackView fb={fb} act={act} />
         {msg && <p className="ay-small ay-err">{msg}</p>}

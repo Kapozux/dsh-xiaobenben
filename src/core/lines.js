@@ -210,6 +210,8 @@ export const TPL = {
 /** 事件 → 界面上的大类（反应按钮、动作、设置里的开关都按大类走，见 pet-engine.js 的 KIND） */
 export const KIND_OF = { caught: 'caught', complain: 'complain', cuss: 'complain', streak: 'complain', marks: 'complain', sorry: 'sorry', sorryday: 'sorry', stopped: 'stopped', halt: 'stopped',
   late: 'late', night: 'late', long: 'work', terse: 'work', eater: 'work', pass: 'work', passafter: 'work' }
+/** 事件 → 演哪个动作（没写的按大类走 ANIM_OF）。台词里不写身体动作，动作在这儿配 */
+export const EVENT_ANIM = { stopped: 'halt', halt: 'halt', pass: 'wag', passafter: 'wag', eater: 'full', stat_rice: 'full', cuss: 'curl', streak: 'curl', marks: 'pause', sorryday: 'bury', stat_caught: 'close', stat_owe: 'peek', stat_passnag: 'peek', stat_project: 'proud', stat_streak: 'wag', stat_first: 'headpat', stat_today: 'headpat', stat_cuss: 'mutter', stat_stops: 'halt', long: 'proud', terse: 'mutter' }
 export const ANIM_OF = { caught: 'caught', complain: 'sigh', sorry: 'bow', stopped: 'startle', late: 'yawn', work: 'work', stat: 'eat' }
 
 const q = (pre, v, post = '') => v ? `${pre}「${v}」${post}` : ''

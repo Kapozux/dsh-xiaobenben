@@ -63,15 +63,23 @@ export const EXPR = {
   idle: 'normal', work: ['write', 'thinking'], file: ['write', 'thinking'], yawn: ['sleep', 'sleepy'], startle: 'surprised', drag: 'dangle',
   caught: ['hide', 'shy'], bow: ['bow', 'shy'], sigh: 'sad', cheer: ['spout', 'wave', 'happy'], eat: ['count', 'eat'], poke: ['wave', 'happy'],
   angry: ['sulk', 'accuse', 'pout'], proud: 'proud', land: 'land',
+  // 台词里不写的身体动作，由这些来演（模型写台词时可以挑，见 core/style.js 的 ACTIONS；事件默认用哪个见 core/lines.js 的 EVENT_ANIM）
+  curl: 'curl-1', bury: 'curl-2', wag: 'tail-1', halt: 'halt', full: 'full', headpat: 'headpat', mutter: 'mutter', close: 'close', pause: 'pause', peek: 'peek',
 }
+/** 两帧来回切的动作：摇尾巴 */
+export const SEQ = { 'tail-1': ['tail-1', 'tail-2'] }
+/** 头顶的小特效（assets/xiaobenben/fx-*.png）：哪张图配哪个 */
+export const FX_OF = { hide: 'sweat', surprised: 'exclaim', spout: 'sparkle', proud: 'sparkle', 'tail-1': 'heart', headpat: 'heart', sleepy: 'zzz', pout: 'anger', accuse: 'anger', sulk: 'anger', mutter: 'dots', thinking: 'dots', full: 'burp', eat: 'note', wave: 'note', peek: 'note', 'curl-1': 'gloom', 'curl-2': 'gloom', close: 'sigh', pause: 'sweat', bow: 'sweat' }
+export const FX = [...new Set(Object.values(FX_OF))]
 /** 姿势图（不是单纯换脸）；没这张图时退回哪个表情 */
 export const POSE_FALLBACK = {
   write: 'thinking', count: 'eat', hide: 'shy', accuse: 'pout', spout: 'happy', bow: 'shy',
   dangle: 'surprised', land: 'surprised', sit: 'normal', sleep: 'sleepy', sulk: 'pout', wave: 'happy',
+  'curl-1': 'sad', 'curl-2': 'shy', 'tail-1': 'proud', 'tail-2': 'proud', halt: 'surprised', full: 'eat', headpat: 'happy', mutter: 'pout', close: 'sad', pause: 'surprised', peek: 'shy',
 }
 export const POSES = Object.keys(POSE_FALLBACK)
 const LINGER = { short: 0.45, normal: 1, long: 1.7 }
-export const FIGURES = ['normal', 'blink', 'happy', 'sad', 'surprised', 'sleepy', 'shy', 'thinking', 'eat', 'pout', 'proud', ...POSES, 'head', 'walk-1', 'walk-2', 'walk-3', 'walk-4', 'flip-1', 'flip-2', 'flip-3', 'flip-4', 'flip-5', 'flip-6']
+export const FIGURES = ['normal', 'blink', 'happy', 'sad', 'surprised', 'sleepy', 'shy', 'thinking', 'eat', 'pout', 'proud', ...POSES, 'head', 'walk-1', 'walk-2', 'walk-3', 'walk-4', 'flip-1', 'flip-2', 'flip-3', 'flip-4', 'flip-5', 'flip-6', ...FX.map(n => 'fx-' + n)]
 
 /** 鼠标停在她身上时的提示。要短：在立绘宽度（最小 141px）里一行放得下 */
 export const HINT = '点我翻旧账 · 可以拖'
@@ -91,6 +99,9 @@ const CSS = `
 @keyframes fy-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 /* 表情：没有单独表情图时，用代码加漫画符号 + 身体动作 */
 .fy-fig { position: relative; width: 100%; height: 100%; transform-origin: 50% 100%; }
+.fy-fx { position: absolute; left: 66%; top: 1%; width: 21%; height: auto; pointer-events: none; opacity: 0; }
+.fy-fx.on { opacity: 1; animation: fy-pop .25s ease-out, fy-note 1.6s ease-in-out .25s infinite; }
+.fy-fx.low { top: 15%; }
 .fy-mark { position: absolute; left: 70%; top: 4%; font-weight: 700; font-size: 26px; line-height: 1; color: #2a241d; pointer-events: none; white-space: nowrap; opacity: 0; }
 .fy-e-happy .fy-mark, .fy-e-surprised .fy-mark, .fy-e-sleepy .fy-mark, .fy-e-shy .fy-mark, .fy-e-sad .fy-mark, .fy-e-thinking .fy-mark,
 .fy-e-eat .fy-mark, .fy-e-pout .fy-mark, .fy-e-proud .fy-mark { opacity: 1; }
@@ -225,9 +236,11 @@ export function createPet(host, opts) {
     if (srcs.normal) show(expr)
   })
   const mark = doc.createElement('div'); mark.className = 'fy-mark'
-  fig.append(img, mark); float.appendChild(fig); body.appendChild(float)
+  const fx = doc.createElement('img'); fx.className = 'fy-fx'; fx.alt = ''; fx.draggable = false
+  fig.append(img, mark, fx); float.appendChild(fig); body.appendChild(float)
   const MARK = { happy: '♪', surprised: '！', sleepy: 'z', shy: '///', sad: '💧', thinking: '…', eat: '♪', pout: '💢', proud: '✦' }
   const srcs = {}                              // 名字 → 地址（null = 没这张图）
+  let seqTimer = 0
   let expr = 'normal', exprTimer = 0, lastActive = Date.now(), walking = null, walkRaf = 0, walkTimer = 0
   const ready = Promise.all(FIGURES.map(n => Promise.resolve(opts.figureSrc(n)).catch(() => null).then(u => { srcs[n] = u })))
   const srcOf = n => srcs[n] || srcs.normal
@@ -243,6 +256,14 @@ export function createPet(host, opts) {
     float.className = 'fy-float' + (expr !== 'normal' && !srcs[expr] ? ' fy-e-' + expr : '')
     mark.textContent = expr === 'shy' ? '' : MARK[expr] || ''
     show(expr)
+    // 两帧来回切（摇尾巴）
+    clearInterval(seqTimer)
+    const seq = SEQ[expr]
+    if (seq && seq.every(n => srcs[n])) { let k = 0; seqTimer = setInterval(() => show(seq[++k % seq.length]), 170) }
+    // 头顶小特效：有这张表情图、也有特效图才挂
+    const f = srcs[expr] && FX_OF[expr], fu = f && srcs['fx-' + f]
+    fx.className = 'fy-fx'
+    if (fu) { if (fx.getAttribute('src') !== fu) fx.src = fu; void fx.offsetWidth; fx.className = 'fy-fx on' + (expr.startsWith('curl') ? ' low' : '') }
     if (ms) exprTimer = setTimeout(() => setExpr('normal'), ms)
   }
   const playAnim = (anim, ms = 0) => {
@@ -954,6 +975,7 @@ export function createPet(host, opts) {
     /** 重新取一遍台词（模型写完新的之后） */
     reload: () => load(true),
     destroy() {
+      clearInterval(seqTimer)
       cancelAnimationFrame(raf); clearInterval(liveTimer); clearTimeout(liveFirstTimer); clearInterval(dragTalk); clearTimeout(fbTimer); Promise.resolve(opts.feedback?.save?.(fb)).catch(() => {}); cancelAnimationFrame(walkRaf); clearTimeout(walkTimer); walking = null; clearInterval(restTimer); clearTimeout(blinkTimer); clearTimeout(exprTimer); clearTimeout(flipTimer); hideBubble(); closeMenu(); win.removeEventListener('resize', onResize); doc.removeEventListener('pointerdown', onDocDown, true); doc.removeEventListener('keydown', onKey); root.remove()
     },
   }

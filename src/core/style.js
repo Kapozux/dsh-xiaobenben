@@ -21,7 +21,8 @@ export const OUT_PER_CARD = 420          // 一件事五个版本 + JSON 包装�
 export const PICK_OUT_PER_CARD = 45
 
 /** 模型能挑的动作 → 桌宠的动作名（src/shared/pet-engine.js 的 EXPR）。台词里不写动作，动作交给桌宠演 */
-export const ACTIONS = { 本子挡脸: 'caught', 鞠躬: 'bow', 委屈: 'sigh', 欢呼: 'cheer', 数饭碗: 'eat', 犯困: 'yawn', 吓一跳: 'startle', 得意: 'proud', 记账: 'work', 挥手: 'poke' }
+export const ACTIONS = { 本子挡脸: 'caught', 鞠躬: 'bow', 委屈: 'sigh', 欢呼: 'cheer', 数饭碗: 'eat', 犯困: 'yawn', 吓一跳: 'startle', 得意: 'proud', 记账: 'work', 挥手: 'poke',
+  缩成一团: 'curl', 把头埋起来: 'bury', 摇尾巴: 'wag', 举着笔僵住: 'halt', 摸肚子: 'full', 求摸头: 'headpat', 小声嘀咕: 'mutter', 合上本子: 'close', 翻页的手停住: 'pause', 探头: 'peek' }
 
 export const STYLE_SYSTEM = `你来扮演「本肥鱼」，给桌宠气泡写台词。下面每张「事件卡」是你和主人一起经历过的一件真事，每张写 ${VERSIONS} 个不同的版本。
 

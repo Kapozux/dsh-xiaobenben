@@ -274,3 +274,16 @@ test('原话过滤在进事件卡之前：半截指令只留看得懂的前半�
   assert.equal(caught('额？？？？ 太慢了吧 我要你2分钟搞定', 'd').card.next, '额？？？？ 太慢了吧')   // 留下的那段一个字符都不动（空格也在）
   assert.equal(caught('大哥 我目前刷新我也看不到啊', 'e').card.next, '大哥 我目前刷新我也看不到啊')
 })
+
+test('动作：每张要用的立绘和特效图都在包里；事件默认动作、模型能挑的动作，桌宠都演得出来', async () => {
+  const fs = await import('node:fs')
+  const { FIGURES, EXPR, POSE_FALLBACK, FX_OF, SEQ } = await import('../src/shared/pet-engine.js')
+  const { EVENT_ANIM, ANIM_OF, TPL } = await import('../src/core/lines.js')
+  const { ACTIONS } = await import('../src/core/style.js')
+  for (const n of FIGURES) assert.ok(fs.existsSync(new URL(`../assets/xiaobenben/${n}.png`, import.meta.url)), n)
+  for (const [k, anim] of [...Object.entries(EVENT_ANIM), ...Object.entries(ANIM_OF), ...Object.entries(ACTIONS)]) assert.ok(EXPR[anim], `${k} → ${anim}`)
+  for (const ev of Object.keys(EVENT_ANIM)) assert.ok(TPL[ev], ev)
+  for (const frame of [...Object.keys(FX_OF), ...Object.values(SEQ).flat()]) assert.ok(FIGURES.includes(frame), frame)
+  for (const [pose, fallback] of Object.entries(POSE_FALLBACK)) assert.ok(FIGURES.includes(pose) && FIGURES.includes(fallback), pose)
+  assert.equal(Object.keys(ACTIONS).length, 20)
+})
