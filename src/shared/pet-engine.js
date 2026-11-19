@@ -862,7 +862,11 @@ export function createPet(host, opts) {
     ctx.moment = { kind: m.kind, t: Date.now() }
     const ago = Math.round((Date.now() - m.ts) / 864e5)
     const tag = [KIND[m.kind], m.kind === 'stat' ? null : ago <= 0 ? '今天' : `${ago} 天前`].filter(Boolean).join(' · ')
-    say({ text: m.text, tag: m.sensitive.length ? tag + ' · 私事' : tag, priv: m.sensitive.length > 0, anim: m.anim, beats: m.beats, turn: m.beats ? null : TURN[m.emotion] || null, landFx: EMOTIONS[replyEmotion(m)]?.fx || null, react: m })
+    // 台词是在夸主人、谢主人的：姿势换成这种情绪自己的（求摸头），不和邀功的竖拇指一样
+    const emo = replyEmotion(m), thanks = emo === 'thanks' && emo !== m.emotion
+    const anim = thanks ? EMOTIONS.thanks.def : m.anim
+    const beats = thanks && m.beats ? m.beats.map(b => ({ ...b, a: anim })) : m.beats
+    say({ text: m.text, tag: m.sensitive.length ? tag + ' · 私事' : tag, priv: m.sensitive.length > 0, anim, beats, turn: m.beats ? null : TURN[m.emotion] || null, landFx: EMOTIONS[emo]?.fx || null, react: m })
   }
 
 

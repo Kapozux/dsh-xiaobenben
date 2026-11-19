@@ -98,8 +98,10 @@ export const OPTIONS_SYSTEM = `你来扮演「本肥鱼」。桌宠气泡里，�
 ${PERSONA}
 
 # 怎么写
-- label：主人说的话，是主人的口气，不超过 6 个字。3 个按钮语气要有区别：一个温柔（哄她、体谅她），一个吐槽（损她、不买账），一个随意（随口一句）。
-- reply：本肥鱼接的那一句，只有一拍、一行，不超过 26 个字。要接得上主人那句：被哄了就撒娇，被损了就嘴硬或心虚，随口一句就顺着聊。
+- label：主人自己说的话，用主人的口吻，不超过 6 个字。主人不会管自己叫「主人」：写「付得值」，不写「主人付得值」；label 里不许出现「主人」「本肥鱼」。3 个按钮语气要有区别：一个温柔（哄她、体谅她），一个吐槽（损她、不买账），一个随意（随口一句）。
+- reply：本肥鱼接的那一句，只有一拍、一行，不超过 26 个字。要接住按钮的语气：温柔、安慰的按钮，回得开心、撒娇；吐槽的按钮，回嘴、顶嘴（嘴硬但不凶）；随口一句就顺着聊。
+- reply 要说新的话：不许把刚才那句台词的意思再说一遍，也不要重复台词里的数字和说法。3 句 reply 之间也别用同一个说法（都是「记本子上」「记一辈子」这种不行）。
+- 自称一律用「本肥鱼」，不说「我」。
 - reply 也是当面对主人说话：句里有「主人」，有语气词（呜、嘿嘿、嘛、哦、～），不写身体动作；动作另外挑一个：${Object.keys(ACTIONS).join('、')}。
 - 原话一字不改：要引就只能原样引事件卡第一行「」里的那句；数字只用事件卡第一行里的阿拉伯数字；不编卡片里没有的事；不说教；时间只用卡片上的说法或「那天」「那次」。
 - reply 里不要再给按钮：到这一句就结束。
@@ -112,6 +114,9 @@ A. 主语说反：派活、说那句原话的是主人，干活的是本肥鱼�
 B. 编了细节，或者和事件卡的事实对不上。
 C. 按钮上的话不像主人会说的（像本肥鱼自己说的、或者看不懂）。
 D. 本肥鱼接的话接不上主人那句，或者读不通。
+F. 语气没接住：温柔、安慰的按钮，她应该回得开心、撒娇；吐槽的按钮，她应该回嘴、顶嘴。温柔的按钮回了委屈赌气、吐槽的按钮回了道谢，都算没接住。
+G. 回话只是把她先说的那句台词的意思又说了一遍，没有新的话。
+H. 按钮不像主人自己的口吻（比如主人管自己叫「主人」）。
 E. 说教、鸡汤，或者嘲笑主人的能力、脾气、作息。
 
 只输出一个 JSON 对象：{"checks": [{"id": "卡片 id", "bad": [有问题的编号，从 1 开始；都没问题就是空数组]}]}，不要 markdown 代码块，不要别的话。`
@@ -291,16 +296,21 @@ export function buildOptCheckPrompt(items) {
  * 核对模型写的一个按钮：{ label, reply }。合格返回整理好的 { label, reply: { beats: [{ t, a }] } }，不合格返回原因（字符串）。
  * reply 里只认 beats；出现 options（想再往下开一层）或者别的字段，直接丢掉不看。
  */
-export function checkOption(card, opt) {
+export function checkOption(card, opt, line = '') {
   const label = typeof opt?.label === 'string' ? opt.label.trim() : ''
   if (!label) return '按钮没有字'
   if ([...label].length > LABEL_MAX) return `按钮「${label}」超过 ${LABEL_MAX} 个字`
   if (/[「」\n]/.test(label) || /\p{Extended_Pictographic}/u.test(label)) return '按钮里有引号、换行或 emoji'
+  if (/主人|本肥鱼|肥鱼|本鲸/.test(label)) return `按钮「${label}」是主人自己说的话，里面不该有「主人」「本肥鱼」`
   const beats = (Array.isArray(opt?.reply?.beats) ? opt.reply.beats : []).map(beatOf).filter(b => b.t.trim())
   if (!beats.length) return '没有回话'
   if (beats.length > 1) return '回话超过一拍'
   const why = checkLine(card, beats[0].t, { reply: true })
   if (why) return `回话：${why}`
+  // 回话不许把原台词的意思再说一遍：和原台词共用一个短句（不算卡片事实里本来就有的）就算重复
+  const own = new Set(phrases(card.fact || '')), said = new Set(phrases(line).filter(x => !own.has(x)))
+  const again = phrases(beats[0].t).find(x => said.has(x))
+  if (again) return `回话重复了原台词里的「${again}」`
   return { label, reply: { beats: [{ t: spaced(beats[0].t.trim()), a: beats[0].a }] } }
 }
 
@@ -418,7 +428,7 @@ export async function styleRun({ adapter, cards, route, signal, onProgress = () 
       for (const { card } of batch) {
         const ok = branches[card.id]?.options || [], why = []
         for (const o of (byId.get(card.id) || []).slice(0, 4)) {
-          const r = checkOption(card, o)
+          const r = checkOption(card, o, chosen[card.id]?.text)
           if (typeof r === 'string') why.push(r)
           else if (!ok.some(x => x.label === r.label)) ok.push(r)
         }
@@ -450,6 +460,19 @@ export async function styleRun({ adapter, cards, route, signal, onProgress = () 
     }
     checked += batch.length
     onProgress({ stage: '查回话', done: checked, total: toCheck.length, ok: Object.values(branches).filter(b => b.options.length >= 2).length, failed: failed.length })
+  }
+
+  // 同一批里，回话之间的短句不许重复（「记本子上」「记一辈子」各只能出现一次）：后出现的那个按钮丢掉
+  const usedReply = new Set()
+  for (const c of cards) {
+    const b = branches[c.id]
+    if (!b) continue
+    b.options = b.options.filter(o => {
+      const ph = phrases(o.reply.beats[0].t)
+      const dup = ph.find(x => usedReply.has(x))
+      if (dup) { b.why.push(`回话和这一批里别的回话撞了短句「${dup}」：${o.label}`); return false }
+      ph.forEach(x => usedReply.add(x)); return true
+    })
   }
 
   const lines = {}

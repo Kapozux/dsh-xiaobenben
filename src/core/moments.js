@@ -301,7 +301,7 @@ export function say(event, seed, ...varsList) {
 say.used = {}
 say.phrases = new Set()
 /** 一句话里的短句：按标点切开，去掉占位符、引号里的话、「本肥鱼」「主人」，剩下 4 个字以上的 */
-export const phrases = t => String(t).replace(/「[^」]*」/g, '|').replace(/\{\w+\}/g, '|').split(/[，。！？…、：\n|～,.!?]+/).map(x => x.replace(/本肥鱼|主人|\s/g, '')).filter(x => [...x].length >= 4)
+export const phrases = t => String(t).replace(/「[^」]*」/g, '|').replace(/[（(][^）)]*[）)]/g, '|').replace(/\{\w+\}/g, '|').split(/[，。！？…、：\n|～,.!?]+/).map(x => x.replace(/本肥鱼|主人|\s/g, '')).filter(x => [...x].length >= 4)
 
 const WEEK = '日一二三四五六'
 const partOf = h => h < 5 ? '凌晨' : h < 9 ? '早上' : h < 12 ? '上午' : h < 13 ? '中午' : h < 18 ? '下午' : '晚上'

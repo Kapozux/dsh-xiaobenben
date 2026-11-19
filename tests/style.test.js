@@ -205,3 +205,36 @@ test('问一次、存本机、之后只发新的：私事不发；主人答「�
   assert.match(q2.prompt, /id=w1/)
   assert.doesNotMatch(q2.prompt, /id=c1/)
 })
+
+test('按钮分支的五条规矩：按钮是主人的口吻、回话不重复原台词、一批里回话的短句不重样、自称只用本肥鱼、夸主人和邀功姿势不同', async () => {
+  const line = '主人说了本肥鱼 90 回不对，本肥鱼只认了 59 回……\n（小声）剩下 31 回先欠着嘛～'
+  const ok = { label: '付得值', reply: { beats: [{ t: '嘿嘿，主人这么说，本肥鱼干活更香啦～', a: '摇尾巴' }] } }
+  assert.equal(typeof checkOption(owe, ok, line), 'object')
+  assert.match(checkOption(owe, { ...ok, label: '主人付得值' }, line), /里面不该有「主人」/)                       // 主人不会管自己叫主人
+  assert.match(checkOption(owe, { label: '就你嘴硬', reply: { beats: [{ t: '呜，主人，剩下 31 回先欠着嘛～' }] } }, line), /回话重复了原台词里的「剩下31回先欠着嘛」/)
+  assert.match(checkOption(owe, { label: '还行', reply: { beats: [{ t: '嘿嘿，主人夸我了呀～' }] } }, line), /自称要用「本肥鱼」/)
+  assert.match(checkLine(owe, '主人说了 90 回不对，我只认了 59 回嘛～'), /自称要用「本肥鱼」/)
+  assert.equal(checkLine(streak, '主人还记得吗，my-app 你连着弄过 9 天。本肥鱼也陪了 9 天，我们真能熬呀～'), null)     // 「我们」不算
+
+  // 一批里两件事的回话都说「记在本子上啦」：后出现的那个按钮丢掉，剩下不到 2 个就整组不用
+  const adapter = async ({ system, prompt }) => {
+    const ids = [...new Set([...prompt.matchAll(/id=(\w+)/g)].map(m => m[1]))]
+    if (system.includes('挑出最好的一版')) return { text: JSON.stringify({ picks: ids.map(id => ({ id, best: 1, bad: [] })) }) }
+    if (system.includes('检查每一组')) return { text: JSON.stringify({ checks: ids.map(id => ({ id, bad: [] })) }) }
+    if (system.includes('写 3 个按钮')) return { text: JSON.stringify({ branches: ids.map(id => ({ id, options: [
+      { label: '真乖', reply: { beats: [{ t: '嘿嘿，主人这句本肥鱼记在本子上啦～', a: '摇尾巴' }] } },
+      { label: id === 'c1' ? '还差点' : '就这？', reply: { beats: [{ t: id === 'c1' ? '哼，主人再等等嘛，本肥鱼会更行的。' : '什么叫就这嘛，主人，哼。', a: '小声嘀咕' }] } },
+      { label: id === 'c1' ? '随口说说' : '行吧', reply: { beats: [{ t: id === 'c1' ? '主人随口说，本肥鱼可当真了哦。' : '主人说行就行呀，嘿咻。', a: '探头' }] } },
+    ] })) }) }
+    return { text: JSON.stringify({ lines: ids.map(id => ({ id, texts: [{ beats: [{ t: id === 'c1' ? '主人上个月问本肥鱼「你到底行不行」……呜，现在行一点了嘛～' : '主人昨天上午只说了「做吧」，本肥鱼就干了 22 分钟呢，夸一句嘛～', a: '得意' }] }] })) }) }
+  }
+  const r = await styleRun({ adapter, cards: [complain, terse], route: { provider: 'p', model: 'm' } })
+  assert.deepEqual(r.lines.c1[0].options.map(o => o.label), ['真乖', '还差点', '随口说说'])
+  assert.deepEqual(r.lines.w1[0].options.map(o => o.label), ['就这？', '行吧'])                      // 「真乖」那句和 c1 的撞了短句
+  assert.match(r.branches.w1.why.join(), /撞了短句/)
+
+  const { EMOTIONS } = await import('../src/shared/emotion.js')
+  assert.notEqual(EMOTIONS.thanks.def, EMOTIONS.brag.def)
+  assert.ok(!EMOTIONS.thanks.anims.includes('proud'))
+  for (const e of Object.values(EMOTIONS)) for (const [label, replies] of e.buttons) { assert.doesNotMatch(label, /主人|本肥鱼/, label); for (const t of replies) assert.doesNotMatch(t, /我(?!们)/, t) }
+})

@@ -107,6 +107,7 @@ export function voiceIssue(text) {
   const t = outside(text)
   if (!/主人|你/.test(t)) return '不是在对主人说话（整句没有「主人」）'
   if (!/[呜嘿诶欸嘛呀啦哦呢吧嗝哼哇唉嘻呼～~]/.test(t)) return '没有语气词'
+  if (/我(?!们)|咱(?!俩|们)/.test(t)) return '自称要用「本肥鱼」，不说「我」'
   if (/\d+\s*月\s*\d+\s*[日号]|\d+\s*[日号](?!子)|\d+\s*月(?!前)/.test(t)) return '写了几月几日（时间只说相对的）'
   for (const m of t.matchAll(/[（(]([^）)]*)[）)]/g)) if (!TONE_HINT.test(m[1].trim())) return `括号里写了动作「${m[1]}」（括号只许标语气）`
   for (const re of BODY) { const m = t.match(re); if (m) return `旁白式描写（写了身体动作：${m[0]}）` }
