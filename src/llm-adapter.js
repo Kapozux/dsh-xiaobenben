@@ -21,22 +21,14 @@ export async function lowestEffort(llm, { provider, model }) {
  * @param {{ quick?: boolean }} [opts] quick：用思考强度最低的那一档
  */
 export function dshAdapter(llm, { quick = false } = {}) {
-  const efforts = new Map()
-  return async ({ provider, model, system, prompt, maxTokens, signal }) => {
-    let reasoningEffort
-    if (quick) {
-      const k = provider + '/' + model
-      if (!efforts.has(k)) efforts.set(k, await lowestEffort(llm, { provider, model }))
-      reasoningEffort = efforts.get(k)
-    }
+  const efforts = new Map()                  // provider/model → 用哪一档（null = 不传，用模型自己的默认）
+  const once = async ({ provider, model, system, prompt, maxTokens, signal }, reasoningEffort) => {
     const messages = [{ id: randomUUID(), role: 'user', content: [{ type: 'text', text: prompt }], source: { kind: 'user' } }]
-    let text = ''
-    let usage
-    let finish
-    let delta = ''
+    let text = '', delta = '', reasoning = 0, usage, finish
     for await (const chunk of llm.stream({ provider, model, system, messages, maxTokens, signal, ...(reasoningEffort ? { reasoningEffort } : {}) })) {
       if (chunk.type === 'text-delta') delta += chunk.text || ''
-      if (chunk.type === 'block-end' && chunk.block?.type === 'text') text += chunk.block.text
+      else if (chunk.type === 'reasoning-delta') reasoning += (chunk.text || '').length
+      else if (chunk.type === 'block-end' && chunk.block?.type === 'text') text += chunk.block.text
       else if (chunk.type === 'usage') usage = chunk.usage
       else if (chunk.type === 'finish') finish = chunk.reason
     }
@@ -44,7 +36,20 @@ export function dshAdapter(llm, { quick = false } = {}) {
       throw new Error(`${provider}/${model}：${finish.failure?.message || finish.kind}`)
     }
     if (!text.trim()) text = delta                    // 没收到整块的文字就用一段段攒起来的
-    if (!text.trim()) throw new Error(`${provider}/${model} 没有返回文字（结束原因：${finish?.kind || '不明'}；输出 ${usage?.outputTokens ?? '?'} token，其中思考 ${usage?.reasoningTokens ?? '?'}）`)
+    if (!text.trim()) throw new Error(`${provider}/${model} 没有返回文字（结束原因：${finish?.kind || '不明'}；输出 ${usage?.outputTokens ?? '?'} token；思考了 ${reasoning} 个字；思考档位：${reasoningEffort || '模型默认'}）`)
     return { text, usage }
+  }
+  return async req => {
+    if (!quick) return once(req)
+    // 写台词用思考强度最低的一档：先看模型列出来的档位；列不出来就直接试「off」，模型不认再退回它自己的默认
+    const k = req.provider + '/' + req.model
+    if (!efforts.has(k)) efforts.set(k, (await lowestEffort(llm, req)) ?? 'off')
+    const effort = efforts.get(k)
+    if (!effort) return once(req)
+    try { return await once(req, effort) } catch (err) {
+      if (!/reasoning effort|reasoningEffort|UNSUPPORTED/i.test(err?.message || '')) throw err
+      efforts.set(k, null)
+      return once(req)
+    }
   }
 }
