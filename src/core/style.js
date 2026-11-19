@@ -8,7 +8,7 @@
  *   发什么、发给谁、多少 token：先给主人看，主人点「发送」才跑（src/styler.js）。
  */
 import { createHash } from 'node:crypto'
-import { estimateTokens, parseJson } from './ai.js'
+import { estimateTokens, parseList } from './ai.js'
 import { width, MAX_WIDTH, phrases } from './moments.js'
 import { checkLine as standard, voiceIssue, spaced, bubbleLines } from './standard.js'
 import { PERSONA } from './persona.js'
@@ -331,11 +331,12 @@ export async function styleRun({ adapter, cards, route, signal, onProgress = () 
   const ask = async (system, prompt, maxTokens, key) => {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const res = await adapter({ provider: route.provider, model: route.model, system, prompt, maxTokens, signal })
+        // 输出额度放宽三倍再加 2000：带思考的模型，思考也算在输出里，卡得太紧会一个字都不返回（额度是上限，不是用量）
+        const res = await adapter({ provider: route.provider, model: route.model, system, prompt, maxTokens: maxTokens * 3 + 2000, signal })
         if (res.usage) usage.push(res.usage)
-        const obj = parseJson(res.text)
-        if (!Array.isArray(obj[key])) throw new Error(`模型返回的 JSON 里没有 ${key}`)
-        return obj[key]
+        const list = parseList(res.text, key)             // 坏了一处就一项一项抢救
+        if (!list) throw new Error(`模型返回的内容里取不出 ${key}`)
+        return list
       } catch (err) {
         errors.push(err?.message || String(err))
         console.warn('[dsh-xiaobenben] 模型写台词失败', err?.message || err)

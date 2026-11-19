@@ -238,3 +238,11 @@ test('按钮分支的五条规矩：按钮是主人的口吻、回话不重复�
   assert.ok(!EMOTIONS.thanks.anims.includes('proud'))
   for (const e of Object.values(EMOTIONS)) for (const [label, replies] of e.buttons) { assert.doesNotMatch(label, /主人|本肥鱼/, label); for (const t of replies) assert.doesNotMatch(t, /我(?!们)/, t) }
 })
+
+test('模型返回的 JSON 坏了一处：一项一项抢救，坏的那项丢掉，别整批作废', async () => {
+  const { parseList } = await import('../src/core/ai.js')
+  assert.deepEqual(parseList('{"lines":[{"id":"a","texts":["x"]},{"id":"b"}]}', 'lines').map(x => x.id), ['a', 'b'])
+  assert.deepEqual(parseList('前言 {"lines":[{"id":"a","texts":["有 } 和 \\" 的字"]} {"id":"b","texts":["少了逗号"]},{"id":"c","texts":["被截断', 'lines').map(x => x.id), ['a', 'b'])
+  assert.equal(parseList('没有 JSON', 'lines'), null)
+  assert.equal(parseList('{"other":[1]}', 'lines'), null)
+})

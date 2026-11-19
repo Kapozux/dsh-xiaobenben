@@ -71,6 +71,30 @@ export function quote(material, route, prices = [], kind = 'all', expensiveAbove
 }
 
 /** 从模型输出里拿 JSON：容忍前后多余文字和 ```json 包裹。 */
+/**
+ * 从模型的回答里取出一个数组（{"lines":[…]} 里的 lines）。整段 JSON 能解析就直接用；
+ * 坏了一处（少个逗号、被截断）就一项一项抢救：数组里每个完整的 {…} 单独解析，坏的那一项丢掉，别因为一处坏了整批作废。
+ * @returns {any[] | null} 取不出来返回 null
+ */
+export function parseList(text, key) {
+  try { const v = parseJson(text)[key]; if (Array.isArray(v)) return v } catch {}
+  const s = String(text).replace(/```(?:json)?/g, '')
+  const at = s.indexOf(`"${key}"`)
+  const start = at < 0 ? -1 : s.indexOf('[', at)
+  if (start < 0) return null
+  const out = []
+  let depth = 0, from = -1, inStr = false, esc = false
+  for (let i = start + 1; i < s.length; i++) {
+    const ch = s[i]
+    if (inStr) { if (esc) esc = false; else if (ch === '\\') esc = true; else if (ch === '"') inStr = false; continue }
+    if (ch === '"') inStr = true
+    else if (ch === '{') { if (depth++ === 0) from = i }
+    else if (ch === '}') { if (--depth === 0 && from >= 0) { try { out.push(JSON.parse(s.slice(from, i + 1))) } catch {} from = -1 } }
+    else if (ch === ']' && depth === 0) break
+  }
+  return out.length ? out : null
+}
+
 export function parseJson(text) {
   const s = text.replace(/```(?:json)?/g, '')
   const a = s.indexOf('{')
