@@ -34,7 +34,7 @@ function figureSrc(name) {
 
 export function Pet() {
   const ref = useRef(null)
-  const [dialog, setDialog] = useState(false)          // 「用你的模型写台词」的确认框
+  const [dialog, setDialog] = useState(null)           // 「用你的模型写台词」的确认框：null | 'once' | 'auto'
   const api = useRef({})
   useEffect(() => {
     const host = ref.current
@@ -46,23 +46,27 @@ export function Pet() {
       clearInterval(watching)
       watching = setInterval(async () => {
         const s = await refreshStyle()
-        if (!s || s.running) return
+        if (!s || s.running || s.auto?.running) return
         clearInterval(watching)
         await engine.reload()
-        const l = s.last
+        const l = s.auto?.last && (!s.last || s.auto.last.at > s.last.at) ? { ok: s.auto.last.added + s.auto.last.rotated } : s.last
         if (l?.ok) engine.say({ text: `写好了，${l.ok} 件事有了新说法。点本肥鱼翻翻看。`, anim: 'cheer' })
         else engine.say({ text: '模型那边没写成，本肥鱼先照老本子念。', anim: 'sigh' })
       }, 2000)
     }
-    api.current = { started: () => { setDialog(false); engine.say({ text: '本肥鱼去写了，写好叫你。', anim: 'file' }); watchRun() }, declined: () => { setDialog(false); if (!style?.asked) call('style.answer', { answer: 'no' }).then(refreshStyle) } }
+    api.current = {
+      started: auto => { setDialog(null); engine.say({ text: auto ? '好嘞，本肥鱼以后每周自己记一回。\n这就先去写第一批～' : '本肥鱼去写了，写好叫你。', anim: 'file' }); watchRun() },
+      declined: () => { setDialog(null); if (!style?.asked) call('style.answer', { answer: 'no' }).then(refreshStyle) },
+    }
     const ask = setTimeout(async () => {
       const s = await refreshStyle()
       if (!s || s.asked || s.running || !s.pending || host.style.display === 'none') return
       const m = await call('models', {}).catch(() => null)
       if (!m?.providers?.some(p => p.models?.length)) return             // 没配模型：不问，照模板念
       engine.say({
-        text: '让本肥鱼用你的模型写一批台词？\n不写也行，本肥鱼照老本子念。', anim: 'file',
-        buttons: [['看看要发什么', () => setDialog(true)], ['不用', () => { call('style.answer', { answer: 'no' }).then(refreshStyle); engine.say({ text: '好，本肥鱼照本子念。想换了右键找我。', anim: 'bow' }) }]],
+        text: '让本肥鱼用你的模型写台词？\n不写也行，本肥鱼照老本子念。', anim: 'file',
+        // 自动更新只有主人在这儿（或设置里）选了才开
+        buttons: [['自动更新（每周）', () => setDialog('auto')], ['只这一次', () => setDialog('once')], ['不用', () => { call('style.answer', { answer: 'no' }).then(refreshStyle); engine.say({ text: '好，本肥鱼照本子念。想换了右键找我。', anim: 'bow' }) }]],
       })
     }, 6000)
     const syncDesktop = d => { host.style.display = d?.desktop?.on ? 'none' : '' }
@@ -78,7 +82,7 @@ export function Pet() {
       note: d => d ? `最近 ${d.days} 天 · ${d.report.map(r => `${r.id === 'dsh' ? 'dsh' : 'Claude Code'} ${r.sessions ?? 0} 个会话`).join(' · ')} · ${d.moments.length} 件。` : '',
       menuExtras: () => [{
         label: style?.running ? '模型正在写台词…' : style?.styled ? `更新台词（${style.pending ? `${style.pending} 件新的` : '没有新的'}）` : '用你的模型写台词…',
-        onClick: () => { if (!style?.running) setDialog(true) },
+        onClick: () => { if (!style?.running) setDialog('once') },
       }, {
         label: '放到桌面上（关了网页也在）',
         onClick: () => {
@@ -101,6 +105,6 @@ export function Pet() {
   }, [])
   return <>
     <div ref={ref} style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 2147483000 }} />
-    {dialog && <div style={{ position: 'fixed', inset: 0, zIndex: 2147483001, pointerEvents: 'auto' }}><StyleDialog redo={false} onClose={() => api.current.declined()} onStarted={() => api.current.started()} /></div>}
+    {dialog && <div style={{ position: 'fixed', inset: 0, zIndex: 2147483001, pointerEvents: 'auto' }}><StyleDialog redo={false} auto={dialog === 'auto'} onClose={() => api.current.declined()} onStarted={() => api.current.started(dialog === 'auto')} /></div>}
   </>
 }

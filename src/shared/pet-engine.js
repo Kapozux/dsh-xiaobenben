@@ -3,6 +3,7 @@ import { CHAT, MOOD_ANIM, ANIM_MOOD } from './chat.js'
 import { IDLE } from './idle.js'
 import { emptyFeedback, normFeedback, pickRated } from './feedback.js'
 import { LIVE } from './live-lines.js'
+import { REST } from './feedback.js'
 import { EMOTIONS, TURN, turnAt, realTurn, replyEmotion, fitAnim } from './emotion.js'
 /**
  * 大肥鱼引擎：不依赖 React，dsh 浮层（Pet.jsx）和桌面窗口（desktop/）共用一份。
@@ -842,6 +843,8 @@ export function createPet(host, opts) {
     thinking = null
     if (flipping) { flipFound(); await new Promise(r => setTimeout(r, 380)) }   // 「看到了」，停一下再开口
     if (!d) { flipStop(); return say({ text: '本肥鱼脑子卡住了，想不起来……（读记录失败了）', anim: 'sigh' }) }
+    // 自动更新写了新台词：不弹窗，主人点她的时候先说一句（只说一次）
+    if (d.news > 0) { const n = d.news; d.news = 0; flipStop(); return say({ text: `本肥鱼新记了 ${n} 件事哦～\n主人再点一下，翻给你看嘛。`, anim: 'proud', landFx: 'sparkle' }) }
     const pr = opts.prefs.get()
     const f = MODES.find(m => m[0] === pr.mode)?.[2] || (() => true)
     const qk = (pr.mode || 'all') + (pr.priv === false ? 0 : 1)
@@ -849,8 +852,12 @@ export function createPet(host, opts) {
       // 带权重洗牌：👍 多的那一类更常出现，👎 多的少出现（加权蓄水池抽样的 key = u^(1/w)，大的先出）
       // 👎 过的那一件不再翻；👍 过的那一件权重再乘 3
       const w = m => { const [u, dn] = fb.kinds[m.kind] || [0, 0]; return (1 + u) / (1 + dn * 2) * ((fb.lines[m.text] || 0) > 0 ? 3 : 1) }
-      queues[qk] = d.moments.filter(m => f(m) && (pr.priv === false || !m.sensitive.length) && !((fb.lines[m.text] || 0) < 0))
-        .map(m => [Math.random() ** (1 / w(m)), m]).sort((a, b) => a[0] - b[0]).map(x => x[1])
+      // 同一件事翻过以后至少隔 3 天再翻（记在反馈里，刷新页面、换到桌面也算数）；翻得少的排前面
+      const rested = m => !(fb.shown[m.card?.id] && Date.now() - fb.shown[m.card.id][1] < REST)
+      const all = d.moments.filter(m => f(m) && (pr.priv === false || !m.sensitive.length) && !((fb.lines[m.text] || 0) < 0))
+      queues[qk] = all.filter(rested)
+        .map(m => [Math.random() ** (1 / (w(m) / (1 + (fb.shown[m.card?.id]?.[0] || 0)))), m]).sort((a, b) => a[0] - b[0]).map(x => x[1])
+      if (!queues[qk].length && all.length) return say({ text: '这几天能翻的旧账本肥鱼都翻过啦，过两天再来嘛～', anim: 'coax', emo: 'coax', landFx: 'heart' })
     }
     const m = queues[qk].pop()
     if (!m) {
@@ -860,6 +867,7 @@ export function createPet(host, opts) {
   }
   function sayMoment(m) {
     ctx.moment = { kind: m.kind, t: Date.now() }
+    if (m.card?.id) { fb.shown[m.card.id] = [(fb.shown[m.card.id]?.[0] || 0) + 1, Date.now()]; saveFb() }      // 记一笔：翻过几次、什么时候翻的
     const ago = Math.round((Date.now() - m.ts) / 864e5)
     const tag = [KIND[m.kind], m.kind === 'stat' ? null : ago <= 0 ? '今天' : `${ago} 天前`].filter(Boolean).join(' · ')
     // 台词是在夸主人、谢主人的：姿势换成这种情绪自己的（求摸头），不和邀功的竖拇指一样

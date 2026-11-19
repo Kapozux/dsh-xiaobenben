@@ -14,6 +14,7 @@ import { Pet } from './pet.js'
 import { Desktop } from './desktop.js'
 import { normFeedback, feedbackJson } from './shared/feedback.js'
 import { Styler } from './styler.js'
+import { Auto } from './auto.js'
 
 export const name = 'dsh-xiaobenben'
 export const inject = ['sessionQuery', 'connection', 'llm', 'agentDefaultModel']
@@ -30,6 +31,8 @@ export const Config = Schema.object({
   expensiveOutputPrice: Schema.number().default(0).description('输出价格（每百万 token）高于这个数就提示「可以换便宜的模型」；0 = 不提示'),
   electronPath: Schema.string().default('').description('大肥鱼桌面版用的 Electron.app 路径；空 = 自动找本机已有的，没有就下载'),
   electronMirror: Schema.string().default('').description('下载 Electron 用的镜像；空 = https://npmmirror.com/mirrors/electron/'),
+  autoRunTokens: Schema.number().default(60000).description('台词自动更新：每次最多用多少 token（主人开了自动更新才有用）'),
+  autoMonthTokens: Schema.number().default(250000).description('台词自动更新：每个月最多用多少 token'),
   sensitiveExtra: Schema.dict(Schema.array(Schema.string())).default({}).description('额外的敏感词，按类：{ 健康: [...], 感情: [...], 成绩: [...], 家庭: [...] }'),
 })
 
@@ -63,6 +66,16 @@ export function apply(ctx, config = {}) {
     const s = ctx.agentDefaultModel.currentSelection()
     return { provider: s.provider, model: s.model }
   }
+
+  // 台词自动更新（主人选了才开）：dsh web 开着的时候每 5 分钟看一眼，够一周了、主人又闲着才跑。见 src/auto.js
+  const auto = new Auto({
+    pet, store, adapter, route: currentRoute, isRunning: () => !!styler.job,
+    caps: { run: config.autoRunTokens, month: config.autoMonthTokens },
+    activity: async () => { const n = await pet.now(); return { busy: (n.busy || []).length > 0, lastAt: n.lastAt || 0 } },
+  })
+  const autoTimer = setInterval(() => auto.tick().catch(err => console.warn('[dsh-xiaobenben] 自动更新出错', err)), 5 * 60e3)
+  autoTimer.unref?.()
+  try { ctx.on?.('dispose', () => clearInterval(autoTimer)) } catch {}
 
   const routes = {
     async sources() {
@@ -98,7 +111,8 @@ export function apply(ctx, config = {}) {
       try { return await running } finally { running = null }
     },
     async moments(body) {
-      return pet.moments({ fresh: !!body.fresh })
+      // news：自动更新新写了几件事。带在这一次里交给挂件（她下次被点时说一句），交出去就清零
+      return { ...(await pet.moments({ fresh: !!body.fresh })), news: auto.takeNews() }
     },
     async now() {
       return pet.now()
@@ -111,7 +125,17 @@ export function apply(ctx, config = {}) {
       return styler.start({ route: body.route || currentRoute(), hash: body.hash, redo: !!body.redo })
     },
     async 'style.status'() {
-      return styler.status()
+      return { ...(await styler.status()), auto: auto.status() }
+    },
+    // 自动更新：开 / 关（开的时候不立刻跑，除非带 now：第一次选「自动更新」那一下先写一批）、暂停后继续
+    async 'auto.set'(body) {
+      const st = auto.set(body.on === true)
+      if (body.on === true) styler.answer('yes')
+      if (body.on === true && body.now === true && !styler.job) auto.run().catch(err => console.warn('[dsh-xiaobenben] 自动更新出错', err))
+      return { ...st, running: body.on === true && body.now === true }
+    },
+    async 'auto.resume'() {
+      return auto.resume()
     },
     // 第一次打开时问的那一句「让本肥鱼用你的模型写一批台词？」，主人答了什么
     async 'style.answer'(body) {

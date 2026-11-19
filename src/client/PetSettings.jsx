@@ -57,8 +57,31 @@ function StyleSection({ onChanged }) {
           {st?.styled > 0 && <button className="ay-btn" onClick={() => call('style.clear').then(() => { refresh(); onChanged() })}>删掉模型写的，只念模板</button>}
         </div>
       )}
+      {st?.auto && <AutoStatus a={st.auto} onChange={refresh} onOpen={() => setOpen({ redo: false, auto: true })} />}
       {err && <p className="ay-err">{err}</p>}
-      {open && <StyleDialog redo={open.redo} onClose={() => setOpen(null)} onStarted={() => { setOpen(null); refresh() }} />}
+      {open && <StyleDialog auto={!!open.auto} redo={open.redo} onClose={() => setOpen(null)} onStarted={() => { setOpen(null); refresh() }} />}
+    </div>
+  )
+}
+
+/** 自动更新：开关、上次什么时候跑的、用了多少 token、这个月累计、下次大概什么时候；暂停了写明原因 */
+function AutoStatus({ a, onChange, onOpen }) {
+  const time = ts => new Date(ts).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  const n = v => (v || 0).toLocaleString()
+  return (
+    <div style={{ marginTop: 14 }}>
+      <h3 style={{ margin: '0 0 6px', fontSize: 14 }}>自动更新</h3>
+      <label className="ay-small" style={{ display: 'block' }}>
+        <input type="checkbox" checked={a.on} onChange={e => (e.target.checked ? onOpen() : call('auto.set', { on: false }).then(onChange))} /> 每周自己更新一回台词（dsh web 开着、你闲下来 10 分钟以上才跑；每次最多约 {n(a.caps.run)} token，每月最多约 {n(a.caps.month)}）
+      </label>
+      {a.on && <p className="ay-small ay-muted" style={{ margin: '6px 0 0' }}>
+        {a.running ? '正在写…' : a.last ? `上次：${time(a.last.at)}，用了 ${n(a.last.tokens)} token，新写 ${a.last.added} 件、换说法 ${a.last.rotated} 件${a.last.ok ? '' : `，没写成（${a.last.error}）`}` : '还没跑过'}
+        　本月累计：{n(a.monthTokens)} / {n(a.caps.month)} token
+        　下次：{a.paused ? '已暂停' : a.nextAt && a.nextAt > Date.now() ? `${time(a.nextAt)} 以后，等你闲下来` : '等你闲下来 10 分钟就跑'}
+      </p>}
+      {a.on && a.paused && <p className="ay-err ay-small" style={{ margin: '6px 0 0' }}>
+        自动更新暂停了：{a.paused}　<button className="ay-btn" onClick={() => call('auto.resume').then(onChange)}>继续</button>
+      </p>}
     </div>
   )
 }

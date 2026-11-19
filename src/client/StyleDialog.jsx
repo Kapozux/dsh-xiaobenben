@@ -5,7 +5,9 @@
 import { useEffect, useState } from 'react'
 import { call } from './api.js'
 
-export function StyleDialog({ redo, onClose, onStarted }) {
+export function StyleDialog({ redo, auto = false, onClose, onStarted }) {
+  const [caps, setCaps] = useState(null)
+  useEffect(() => { if (auto) call('style.status').then(s => setCaps(s.auto?.caps || null)).catch(() => {}) }, [auto])
   const [models, setModels] = useState(null)
   const [route, setRoute] = useState(null)
   const [q, setQ] = useState(null)
@@ -20,15 +22,18 @@ export function StyleDialog({ redo, onClose, onStarted }) {
   const send = async () => {
     setSending(true); setError('')
     try {
-      const r = await call('style.run', { route, redo, hash: q.hash, confirm: true })
+      // 自动更新：不走「一次发完」那条路，开了以后先按每次的上限写第一批，剩下的以后每周补
+      const r = auto ? await call('auto.set', { on: true, now: true }).then(() => ({ ok: true })) : await call('style.run', { route, redo, hash: q.hash, confirm: true })
       if (!r.ok) setError(r.error); else onStarted()
     } catch (e) { setError(e.message) } finally { setSending(false) }
   }
   return (
     <div className="ay-modal" onClick={e => e.target === e.currentTarget && !sending && onClose()}>
       <div className="ay-dialog" role="dialog" aria-label="发送前确认">
-        <h2>让本肥鱼用你的模型写一批台词？</h2>
-        <p className="ay-muted">{redo ? '全部重写一遍。' : '只写本子里还没有的事。'}写好存在本机，之后点她只从本机抽，不再调模型。不发也行，她照模板念。</p>
+        <h2>{auto ? '让本肥鱼每周自己更新台词？' : '让本肥鱼用你的模型写一批台词？'}</h2>
+        {auto
+          ? <p className="ay-muted">开了以后，dsh web 开着、你闲下来 10 分钟以上时，她每周自己写一回：这周新的事，再给 5 件旧事换个说法。<b>每次最多约 {caps ? caps.run.toLocaleString() : '…'} token，每月最多约 {caps ? caps.month.toLocaleString() : '…'} token</b>，连续两次没写成就自己停下。随时能在「设置 → 年度回顾 → 翻旧账」里关。现在点开启，会先写第一批（同样不超过每次的上限，下面那个总数是全部写完要用的，会分几周补齐）。</p>
+          : <p className="ay-muted">{redo ? '全部重写一遍。' : '只写本子里还没有的事。'}写好存在本机，之后点她只从本机抽，不再调模型。不发也行，她照模板念。</p>}
         <p className="ay-small"><b>会发送事发前后的几句对话</b>（你说的和它回的原文，每件事不超过 300 字），外加程序算出来的事实。都打过码；涉及健康、感情、成绩、家庭的事整件不发。</p>
         <div className="ay-field">
           <span>发给</span>
@@ -63,7 +68,7 @@ export function StyleDialog({ redo, onClose, onStarted }) {
         {error && <p className="ay-err">{error}</p>}
         <div className="ay-actions">
           <button className="ay-btn" onClick={onClose} disabled={sending}>不发，照模板念</button>
-          <button className="ay-btn ay-primary" onClick={send} disabled={!q || !q.count || sending}>{sending ? '开始…' : '发送'}</button>
+          <button className="ay-btn ay-primary" onClick={send} disabled={!q || !q.count || sending}>{sending ? '开始…' : auto ? '开启自动更新' : '发送'}</button>
         </div>
       </div>
     </div>
