@@ -535,7 +535,7 @@ export function createPet(host, opts) {
     const textEl = b.querySelector('.fy-text')
     const html = (k, s) => `<div${rs[k].who === 'master' ? ' class="fy-m"' : ''}>${paint(s)}</div>`
     // 先用全文撑出最终大小再定位，打字时气泡不抖
-    textEl.innerHTML = rs.map((r, k) => html(k, r.text)).join(''); b.style.width = Math.min(340, Math.max(line.react || line.chat ? 250 : 120, b.offsetWidth)) + 'px'
+    textEl.innerHTML = rs.map((r, k) => html(k, r.text)).join(''); b.style.width = Math.min(340, Math.max(line.react || line.chat || line.buttons ? 250 : 120, b.offsetWidth)) + 'px'
     textEl.innerHTML = ''
     positionBubble()
     const t = talk = { i: 0, typed: '', full: false, timer: 0, line }
@@ -561,10 +561,11 @@ export function createPet(host, opts) {
       t.full = true
       const isLast = t.i === parts.length - 1
       if (isLast && line.rate && !dragging) addRate(b, line.rate, line.text)
+      if (isLast && line.buttons) addButtons(b, line.buttons)
       if (isLast && line.react) addReactions(b, line.react)
       else if (isLast && line.chat) addChat(b, line.chat)
       const k = LINGER[opts.prefs.get().linger] || 1           // 气泡停多久：短 0.45 / 默认 1 / 长 1.7
-      const read = k * Math.max(isLast ? (line.react || line.chat ? 9000 : line.rate ? 6000 : 3500) : 700, [...parts[t.i]].length * (isLast ? 110 : 40))
+      const read = k * Math.max(isLast ? (line.buttons ? 30000 : line.react || line.chat ? 9000 : line.rate ? 6000 : 3500) : 700, [...parts[t.i]].length * (isLast ? 110 : 40))
       t.timer = setTimeout(() => { if (isLast) { hideBubble(); idle() } else { t.i++; startBeat() } }, read)
     }
     // 鼠标停在气泡上就别收（在犹豫点哪个反应）
@@ -584,6 +585,18 @@ export function createPet(host, opts) {
     startBeat()
   }
 
+  /** 她问主人一件事时底下的按钮：[[字, 点了干什么]]（第一次打开问要不要用模型写台词） */
+  function addButtons(b, list) {
+    const row = doc.createElement('div'); row.className = 'fy-react'
+    for (const [label, fn] of list) {
+      const btn = doc.createElement('button'); btn.textContent = label
+      btn.addEventListener('pointerdown', e => e.stopPropagation())
+      btn.addEventListener('click', e => { e.stopPropagation(); hideBubble(); idle(); fn() })
+      row.appendChild(btn)
+    }
+    b.appendChild(row)
+    positionBubble()
+  }
   /** 说完后底下那一排：👍 👎（记下来，以后这一类多说 / 少说）+ 一个这一类专属的反应（点了她接一句）+「再翻一件」。 */
   function addReactions(b, m) {
     const row = doc.createElement('div'); row.className = 'fy-react'
@@ -860,7 +873,7 @@ export function createPet(host, opts) {
     if (opts.loadNow) item((pr.live === false ? '☐' : '☑') + ' 陪你等活（AI 干活、跑完、你骂它时她会说）', false, () => opts.prefs.set({ live: pr.live === false }))
     item('先收起来', false, fold)
     m.appendChild(doc.createElement('hr'))
-    const p = doc.createElement('p'); p.textContent = (opts.note?.(data) || '') + '都在本机算，不调模型。一碗白饭 = 5 万 token。'; m.appendChild(p)
+    const p = doc.createElement('p'); p.textContent = (opts.note?.(data) || '') + '点她只从本机的本子里翻，不调模型。一碗白饭 = 5 万 token。'; m.appendChild(p)
     root.appendChild(m)
     m.style.left = clamp(mx, 6, W() - m.offsetWidth - 6) + 'px'; m.style.top = clamp(my, 6, H() - m.offsetHeight - 6) + 'px'
     m.addEventListener('pointerdown', e => e.stopPropagation())
@@ -938,6 +951,8 @@ export function createPet(host, opts) {
 
   return {
     say, poke, debug,
+    /** 重新取一遍台词（模型写完新的之后） */
+    reload: () => load(true),
     destroy() {
       cancelAnimationFrame(raf); clearInterval(liveTimer); clearTimeout(liveFirstTimer); clearInterval(dragTalk); clearTimeout(fbTimer); Promise.resolve(opts.feedback?.save?.(fb)).catch(() => {}); cancelAnimationFrame(walkRaf); clearTimeout(walkTimer); walking = null; clearInterval(restTimer); clearTimeout(blinkTimer); clearTimeout(exprTimer); clearTimeout(flipTimer); hideBubble(); closeMenu(); win.removeEventListener('resize', onResize); doc.removeEventListener('pointerdown', onDocDown, true); doc.removeEventListener('keydown', onKey); root.remove()
     },

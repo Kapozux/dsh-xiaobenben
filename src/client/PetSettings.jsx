@@ -1,11 +1,12 @@
 /**
- * 设置 → 年度回顾 里的「翻旧账」一块：怎么玩，以及「让模型换个说法」的发送确认。
+ * 设置 → 年度回顾 里的「翻旧账」一块：怎么玩，以及「用你的模型写台词」（发送确认在 StyleDialog.jsx）。
  * 翻旧账只在挂件上说（左键点小本本），没有单独的页面。
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { call } from './api.js'
 import { FIGURES, KIND } from '../shared/pet-engine.js'
 import { prefs } from './Pet.jsx'
+import { StyleDialog } from './StyleDialog.jsx'
 
 export function PetSettings() {
   return (
@@ -18,7 +19,7 @@ export function PetSettings() {
   )
 }
 
-/** 让大肥鱼换个说法：事实不变，说法交给模型按人设写；每句都核对过才用，没过的照旧说模板的 */
+/** 用模型写台词：事实由程序定，说法交给主人自己配的模型写一批存本机；每个版本都核对过才用，没过的照旧说模板的 */
 function StyleSection({ onChanged }) {
   const [st, setSt] = useState(null)
   const [open, setOpen] = useState(null)        // null | { redo }
@@ -31,93 +32,33 @@ function StyleSection({ onChanged }) {
     if (wasRunning.current) { wasRunning.current = false; onChanged() }
   }, [st])
 
-  const why = st?.last?.why ? Object.entries(st.last.why).map(([k, n]) => `${k} ${n} 句`).join('、') : ''
+  const why = st?.last?.why ? Object.entries(st.last.why).map(([k, n]) => `${k} ${n} 件`).join('、') : ''
   return (
     <div className="ay-style">
-      <h2>让大肥鱼换个说法</h2>
-      <p className="ay-muted ay-small">上面的话是按模板套的。可以让你在 dsh 里配的模型按大肥鱼的口吻重写：事实（时间、哪件事、原话、数字）由程序定好，模型只管怎么说；写回来的每句都核对原话一字不差、数字对得上、不超过 50 字，没过的照旧说模板的。私事不发。写好的存在本机，小本本说的时候就用它。</p>
-      {st && <p className="ay-small">已改写 {st.styled} 件{st.meta?.route ? `（${st.meta.route.provider} · ${st.meta.route.model}）` : ''}</p>}
+      <h2>用你的模型写台词</h2>
+      <p className="ay-muted ay-small">默认她照模板念。你同意的话，可以让你在 dsh 里配的模型一次写一批：发出去的是「事件卡」——每件事一句大白话（什么时候、在弄什么、数字），加上事发前后的几句对话原文（你说的和它回的，每件事不超过 300 字），都打过码，私事不发。每件事写 5 个版本，程序逐字核对原话、核对数字，不过的扔掉；再调一次模型挑出最好的一版，顺带查有没有把话说反、编细节；都不行的那件事照旧念模板。写好的存在本机，之后点她只从本机抽，不再调模型；有了新的事，点「更新台词」才再发一次。</p>
+      {st && <p className="ay-small">本子里有 {st.styled} 件事是模型写的{st.meta?.route ? `（${st.meta.route.provider} · ${st.meta.route.model}）` : ''}{st.pending ? `，还有 ${st.pending} 件新的没写` : ''}</p>}
       {st?.running && (
         <div className="ay-row">
-          <span className="ay-small">正在写：{st.running.done} / {st.running.total}，已通过 {st.running.ok} 句</span>
+          <span className="ay-small">正在{st.running.stage || '写'}：{st.running.done} / {st.running.total} 件</span>
           <button className="ay-btn" onClick={() => call('style.stop').then(refresh)}>停止</button>
         </div>
       )}
       {!st?.running && st?.last && (
         <p className="ay-small ay-muted">
-          上次：{st.last.ok} 句写好了{st.last.failed ? `，${st.last.failed} 句没过核对、照旧说模板的（${why || '调用失败'}）` : ''}。
+          上次：{st.last.ok} 件写好了{st.last.dropped ? `（程序核对扔掉 ${st.last.dropped} 个版本）` : ''}{st.last.failed ? `，${st.last.failed} 件没写成、照旧念模板（${why || '调用失败'}）` : ''}。
           {st.last.errors?.length ? ` 出错：${st.last.errors.join('；')}` : ''}
         </p>
       )}
       {!st?.running && (
         <div className="ay-row">
-          <button className="ay-btn ay-primary" onClick={() => setOpen({ redo: false })}>{st?.styled ? '改写新增的' : '看看要发什么'}</button>
+          <button className="ay-btn ay-primary" disabled={st?.styled > 0 && !st?.pending} onClick={() => setOpen({ redo: false })}>{st?.styled ? `更新台词${st.pending ? `（${st.pending} 件新的）` : '（没有新的）'}` : '看看要发什么'}</button>
           {st?.styled > 0 && <button className="ay-btn" onClick={() => setOpen({ redo: true })}>全部重写</button>}
-          {st?.styled > 0 && <button className="ay-btn" onClick={() => call('style.clear').then(() => { refresh(); onChanged() })}>不用改写的了</button>}
+          {st?.styled > 0 && <button className="ay-btn" onClick={() => call('style.clear').then(() => { refresh(); onChanged() })}>删掉模型写的，只念模板</button>}
         </div>
       )}
       {err && <p className="ay-err">{err}</p>}
       {open && <StyleDialog redo={open.redo} onClose={() => setOpen(null)} onStarted={() => { setOpen(null); refresh() }} />}
-    </div>
-  )
-}
-
-function StyleDialog({ redo, onClose, onStarted }) {
-  const [models, setModels] = useState(null)
-  const [route, setRoute] = useState(null)
-  const [q, setQ] = useState(null)
-  const [error, setError] = useState('')
-  const [sending, setSending] = useState(false)
-  useEffect(() => { call('models').then(m => { setModels(m); setRoute(m.current) }).catch(e => setError(e.message)) }, [])
-  useEffect(() => {
-    if (!route) return
-    setQ(null)
-    call('style.quote', { route, redo }).then(setQ).catch(e => setError(e.message))
-  }, [route?.provider, route?.model])
-  const send = async () => {
-    setSending(true); setError('')
-    try {
-      const r = await call('style.run', { route, redo, hash: q.hash, confirm: true })
-      if (!r.ok) setError(r.error); else onStarted()
-    } catch (e) { setError(e.message) } finally { setSending(false) }
-  }
-  return (
-    <div className="ay-modal" onClick={e => e.target === e.currentTarget && !sending && onClose()}>
-      <div className="ay-dialog" role="dialog" aria-label="发送前确认">
-        <h2>发送前确认</h2>
-        <p className="ay-muted">让模型按大肥鱼的口吻{redo ? '重写全部' : '改写还没改写过的'}台词</p>
-        <div className="ay-field">
-          <span>发给</span>
-          {models ? (
-            <select value={route ? `${route.provider}\u0000${route.model}` : ''} onChange={e => { const [provider, model] = e.target.value.split('\u0000'); setRoute({ provider, model }) }}>
-              {models.providers.flatMap(p => p.models.map(m => (
-                <option key={`${p.id}/${m.id}`} value={`${p.id}\u0000${m.id}`}>{p.name} · {m.name}{p.id === models.current.provider && m.id === models.current.model ? '（当前默认）' : ''}</option>
-              )))}
-            </select>
-          ) : <span className="ay-muted">读取模型列表…</span>}
-        </div>
-        <p className="ay-muted ay-small">只这一次用这个模型，不改你 dsh 的默认设置。</p>
-        {q && <>
-          <div className="ay-quote-nums">
-            <div><b>{q.count}</b><span>件事，分 {q.calls} 次发</span></div>
-            <div><b>≈ {(q.inputTokens + q.outputTokens).toLocaleString()}</b><span>token（估算，输入 {q.inputTokens.toLocaleString()}）</span></div>
-            <div>{q.cost ? <><b>≈ {q.cost.amount < 0.01 ? q.cost.amount.toFixed(4) : q.cost.amount.toFixed(2)} {q.cost.currency}</b><span>按你配置的价格</span></> : <><b>—</b><span>没配置这个模型的价格，只显示 token</span></>}</div>
-          </div>
-          {q.privateSkipped > 0 && <p className="ay-muted ay-small">涉及健康、感情、成绩、家庭的 {q.privateSkipped} 件不发。</p>}
-          <details className="ay-send">
-            <summary>查看要发送的全部内容（{[...q.prompt].length.toLocaleString()} 字）</summary>
-            <p className="ay-muted ay-small">每件事一行：类型、时间、哪件事、一句原话（已打码）、数字。agent 的回复只有它自己那一句原话会发。</p>
-            <pre>{q.system}{'\n\n'}{q.prompt}</pre>
-          </details>
-          <p className="ay-muted ay-small">每次调用失败自动重试 1 次。可以中途停止，写好的那部分照样留下。</p>
-        </>}
-        {q && q.count === 0 && <p className="ay-muted">没有要改写的了。</p>}
-        {error && <p className="ay-err">{error}</p>}
-        <div className="ay-actions">
-          <button className="ay-btn" onClick={onClose} disabled={sending}>取消</button>
-          <button className="ay-btn ay-primary" onClick={send} disabled={!q || !q.count || sending}>{sending ? '开始…' : '发送'}</button>
-        </div>
-      </div>
     </div>
   )
 }

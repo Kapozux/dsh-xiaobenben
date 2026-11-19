@@ -1,7 +1,7 @@
 // 大肥鱼的台词：dsh 事件和 Claude Code JSONL 切出来的轮一样算；挑时刻的规则；私事只看原话。
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildMoments, claudeTurns, dshTurns, fill, fillFit, say, ago, topic, width } from '../src/core/moments.js'
+import { buildMoments, claudeTurns, dshTurns, fill, fillFit, say, ago, topic, width, timeWord } from '../src/core/moments.js'
 import { rounds } from '../src/shared/pet-engine.js'
 import { check } from '../scripts/check-lines.mjs'
 import { TPL } from '../src/core/lines.js'
@@ -51,36 +51,33 @@ test('子代理开的会话不算', () => {
   assert.deepEqual(dshTurns('s1', { origin: 'subagent' }, events), [])
 })
 
-test('挑时刻：干活、说好了却挨骂、认错，都带真数字和原话', () => {
+test('挑时刻：说好了却挨骂、认错，都带原话；光干了几分钟的流水账不说', () => {
   const { header, events } = dshSession()
   const ms = buildMoments(dshTurns('s1', header, events), { now: min(60) })
   const kinds = ms.map(m => m.kind)
-  const work = ms.find(m => m.kind === 'work')
-  assert.ok(work, kinds.join(','))
-  assert.match(work.text, /修登录页/)
-  assert.doesNotMatch(work.text, /「修登录页/)                 // 任务名不套引号
-  assert.match(work.text, /9 分钟|碗/)
+  assert.equal(ms.some(m => m.kind === 'work'), false, '8 分钟的活不值得翻')
   const caught = ms.find(m => m.kind === 'caught')
   assert.ok(caught, kinds.join(','))
-  assert.match(caught.text, /改好了，测试全过了/)
-  assert.match(caught.text, /还是报错？？/)
+  assert.match(caught.text, /「还是报错？？」/)
+  assert.match(caught.text, /今天下午/)                       // 近的事说「今天下午」，不报几月几日几点几分
   const sorry = ms.find(m => m.kind === 'sorry')
-  assert.match(sorry.text, /你说得对，是我漏了一个分支/)
+  assert.match(sorry.text, /「你说得对，是我漏了一个分支」/)
+  for (const m of ms) assert.ok(width(m.text) <= 60, m.text)
 })
 
-test('私事只看原话：模板里的「有感情了」不算感情，原话里的考试算成绩', () => {
+test('私事只看原话：模板里的字不算，原话里的考试算成绩', () => {
   const turns = dshTurns('s', { cwd: '/x/proj' }, [
     { type: 'user/message', time: min(0), data: { content: [{ type: 'text', text: '帮我整理考试成绩表' }], source: { kind: 'user' } } },
     ...Array.from({ length: 70 }, (_, i) => ({ type: 'tool/call', time: min(i + 1), data: { name: 'bash', arguments: '{}' } })),
   ])
   const ms = buildMoments(turns, { now: min(100) })
   const work = ms.find(m => m.kind === 'work')
+  assert.equal(work.event, 'long')
   assert.deepEqual(work.sensitive, ['成绩'])
-  const stat = ms.find(m => m.kind === 'stat' && /proj/.test(m.text))
-  assert.deepEqual(stat.sensitive, [])
+  for (const m of ms.filter(m => m.kind === 'stat')) assert.deepEqual(m.sensitive, [])
 })
 
-test('Claude Code：被打断后主人的下一句是「继续」不算喊停；喊停的原话要打码', () => {
+test('Claude Code：被打断后主人的下一句是「继续」不算喊停；喊停的原话带路径的不说', () => {
   const at = m => new Date(min(m)).toISOString()
   const line = o => JSON.stringify(o)
   const lines = [
@@ -96,25 +93,45 @@ test('Claude Code：被打断后主人的下一句是「继续」不算喊停；
   assert.equal(turns.length, 3)
   assert.equal(turns[0].interrupted, true)
   assert.equal(turns[0].commands, 4)
-  const stopped = buildMoments(turns, { now: min(60) }).filter(m => m.kind === 'stopped')
+  // 喊停的那句带路径：打码以后是〔路径〕，算行话，这件事不说
+  assert.equal(buildMoments(turns, { now: min(60) }).filter(m => m.kind === 'stopped').length, 0)
+  const clean = claudeTurns([...lines.slice(0, -1), line({ type: 'user', timestamp: at(11), message: { content: '先别动那个文件' } })], { key: 'g' })
+  const stopped = buildMoments(clean, { now: min(60) }).filter(m => m.kind === 'stopped')
   assert.equal(stopped.length, 1)
-  assert.match(stopped[0].text, /别动 〔路径〕 那个文件/)
+  assert.match(stopped[0].text, /「先别动那个文件」/)
 })
 
-test('800 条对话版模板全部过检查：必须的占位符各一次、填完没残留、引号不套娃、不超长', () => {
+test('模板全部过检查：标了情绪和态度、占位符都认得、「」里只有原话、填出来过标准', () => {
   for (const [k, r] of Object.entries(check())) {
     assert.deepEqual(r.bad, [], k)
     assert.equal(r.dup, 0, k)
-    assert.ok(r.count >= 25, k)
+    assert.ok(r.count >= 2, k)
   }
+  assert.ok(Object.values(TPL).flat().length >= 100)
 })
 
-test('按类型挑模板：缺值的跳过，太长换下一条，都不行就不说', () => {
-  const out = say('complain', 'x', { w: '10 月 3 日中午' }, { said: '你到底行不行' })
+test('按事件挑模板：缺值的跳过，填出来超 60 字或有行话的换下一条，都不行就不说', () => {
+  const out = say('complain', 'x', { t: '昨天下午', said: '你到底行不行' })
   assert.match(out, /「你到底行不行」/)
-  assert.match(out, /10 月 3 日中午/)            // 模板没写时间的，前面补上
-  assert.equal(say('complain', 'x', { w: '10 月 3 日中午', about: '合并页' }, { said: '你到底行不行' }).includes('合并页那会儿'), true)
-  assert.equal(say('complain', 'x', {}, { said: '长'.repeat(130) }), null)
+  assert.match(out, /昨天下午/)
+  assert.ok(width(out) <= 60)
+  assert.equal(say('complain', 'x', { t: '昨天下午' }), null)                                   // 没有原话
+  assert.equal(say('complain', 'x', { t: '昨天下午', said: '长'.repeat(60) }), null)            // 塞不下
+  assert.equal(say('complain', 'x', { t: '昨天下午', said: '先 commit 再说' }), null)           // 原话里有行话，不能改，只能不说
+  assert.match(say('complain', 'x', { t: '上个月弄 my-app 那阵', place: 'my-app', said: '还是不行' }, { t: '上个月', said: '还是不行' }), /my-app/)   // 几版说法依次试
+  assert.equal(say('complain', 'x', { t: '10 月 3 日', said: '还是不行' }), null)                // 时间只说相对的：几月几日的不说
+})
+
+test('什么时候：近的口语，远的说几月几日；凌晨带钟点', () => {
+  const now = new Date(2026, 10, 19, 15, 0).getTime()                 // 周四
+  const at = (mo, d, h, mi = 0) => new Date(2026, mo - 1, d, h, mi).getTime()
+  assert.equal(timeWord(at(11, 19, 10), now), '今天上午')
+  assert.equal(timeWord(at(11, 18, 20), now), '昨天晚上')
+  assert.equal(timeWord(at(11, 16, 14), now), '这周一下午')
+  assert.equal(timeWord(at(11, 11, 21), now), '上周三晚上')
+  assert.equal(timeWord(at(10, 30, 7), now), '10 月 30 日早上')
+  assert.equal(timeWord(at(10, 30, 7), now, { part: false }), '10 月 30 日')
+  assert.equal(timeWord(at(9, 20, 1, 20), now, { clock: true }), '9 月 20 日凌晨 1:20')
 })
 
 test('气泡：一轮一行，去掉「本肥鱼：」「主人：」，主人的话单独标出来', () => {
@@ -239,4 +256,21 @@ test('拖她的话：拎起 30、拎久 20、甩 20、落地 30；扣着刚才�
     }
   }
   for (const g of Object.values(LINES.rateReply)) { assert.equal(g.up.length, 15); assert.equal(g.down.length, 15) }
+})
+
+test('原话过滤在进事件卡之前：半截指令只留看得懂的前半句，留不下就不引；事件卡只带过了滤的那句', () => {
+  const mk = (next, key) => dshTurns(key, { cwd: '/x/p' }, [
+    { type: 'user/message', time: min(0), data: { content: [{ type: 'text', text: '帮我把按钮改成蓝色' }], source: { kind: 'user' } } },
+    { type: 'assistant/message', time: min(2), data: { message: { content: [{ type: 'text', text: '我已经改成蓝色了，刷新就能看到。' }] } } },
+    { type: 'turn/end', time: min(2), data: { reason: { kind: 'completed' } } },
+    { type: 'user/message', time: min(5), data: { content: [{ type: 'text', text: next }], source: { kind: 'user' } } },
+  ])
+  const caught = (next, key) => buildMoments(mk(next, key), { now: min(60) }).find(m => m.kind === 'caught')
+  assert.equal(caught('不行 你现在不能纯卡', 'a').card.next, '不行')                    // 后半句是冲着当时那件活说的，只留前半句
+  assert.match(caught('不行 你现在不能纯卡', 'a').card.fact, /主人回了一句「不行」$/)
+  assert.doesNotMatch(caught('不行 你现在不能纯卡', 'a').text, /纯卡/)
+  assert.equal(caught('？？？我看不是网络又断了下', 'b'), undefined)                    // 前半句自己站不住：这件事不说
+  assert.equal(caught('还是不行，跑 3 次都 timeout', 'c').card.next, '还是不行')        // 数字、英文的那半句不引
+  assert.equal(caught('额？？？？ 太慢了吧 我要你2分钟搞定', 'd').card.next, '额？？？？ 太慢了吧')   // 留下的那段一个字符都不动（空格也在）
+  assert.equal(caught('大哥 我目前刷新我也看不到啊', 'e').card.next, '大哥 我目前刷新我也看不到啊')
 })

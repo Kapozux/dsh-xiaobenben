@@ -113,6 +113,10 @@ export function apply(ctx, config = {}) {
     async 'style.status'() {
       return styler.status()
     },
+    // 第一次打开时问的那一句「让本肥鱼用你的模型写一批台词？」，主人答了什么
+    async 'style.answer'(body) {
+      return styler.answer(body.answer)
+    },
     async 'style.stop'() {
       return styler.stop()
     },

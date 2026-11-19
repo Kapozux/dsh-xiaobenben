@@ -1,6 +1,8 @@
 /**
- * 翻旧账的 AI 改写：报价 → 用户点「发送」→ 后台一批批跑 → 结果存本机（state.json 的 styled）。
- * 点小本本翻旧账时，有改写过的就说改写的，没有就说模板的（Pet.moments 里换）。
+ * 翻旧账的台词「模型写为主，模板兜底」：
+ *   第一次打开问一次（state.json 的 styleAsked）→ 给主人看要发什么、多少 token → 主人点「发送」→ 后台跑：每件事写 5 版、程序核对、再让模型挑一版 → 结果存本机（state.json 的 styled：事件 id → [选中的那一版]）。
+ *   之后点小本本只从这个库里抽，不调模型；有新事件时主人点「更新台词」才再发一次（只发新的）。
+ *   没同意、没配模型、调用失败、某件事一个版本都没过核对：照旧说模板的（Pet.moments 里换）。
  * 同一时间只跑一个，不排队；页面关了照跑，页面轮询 status。
  */
 import { styleQuote, styleRun, cardsHash } from './core/style.js'
@@ -16,12 +18,16 @@ export class Styler {
     this.last = null
   }
 
-  /** 要发的卡片：私事不发；redo=false 时只发还没改写过的 */
+  /** 要发的卡片：私事不发；redo=false 时只发库里还没有的（新事件） */
   async pending(redo = false) {
     const { moments } = await this.pet.moments({ raw: true })
     const have = this.store.read().styled || {}
-    return moments.filter(m => m.card?.id && !m.sensitive.length && (redo || !have[m.card.id])).map(m => m.card)
+    return moments.filter(m => m.card?.id && m.card.fact && !m.sensitive.length && (redo || !have[m.card.id])).map(m => m.card)
   }
+
+  /** 第一次问过了没有、主人怎么答的：'yes' | 'no' | null（还没问） */
+  asked() { return this.store.read().styleAsked || null }
+  answer(a) { this.store.update(s => ({ ...s, styleAsked: a === 'yes' ? 'yes' : 'no' })); return { ok: true } }
 
   async quote({ route, redo = false }) {
     const cards = await this.pending(redo)
@@ -32,7 +38,7 @@ export class Styler {
   async start({ route, hash, redo = false }) {
     if (this.job) return { ok: false, error: '上一次还在跑，等它结束' }
     const cards = await this.pending(redo)
-    if (!cards.length) return { ok: false, error: '没有要改写的了' }
+    if (!cards.length) return { ok: false, error: '没有新的事要写了' }
     if (cardsHash(cards) !== hash) return { ok: false, error: '记录变了，请重新看一遍要发什么再发送' }
     const ctrl = new AbortController()
     const job = { route, total: cards.length, done: 0, ok: 0, failed: 0, startedAt: Date.now(), ctrl }
@@ -44,13 +50,13 @@ export class Styler {
       },
     }).then(r => {
       // 每批的结果最后一起存：中途停了也把已经写好的存下
-      this.store.update(s => ({ ...s, styled: { ...(s.styled || {}), ...r.lines }, styledMeta: { route, at: Date.now() } }))
+      this.store.update(s => ({ ...s, styleAsked: 'yes', styled: { ...(s.styled || {}), ...r.lines }, styledMeta: { route, at: Date.now() } }))
       const why = {}
       for (const f of r.failed) why[f.why] = (why[f.why] || 0) + 1
-      this.last = { ok: Object.keys(r.lines).length, failed: r.failed.length, why, errors: [...new Set(r.errors)].slice(0, 3), total: cards.length, at: Date.now(), route }
-      if (r.failed.length) console.warn('[dsh-xiaobenben] 改写没过核对、用模板兜底的：', why)
+      this.last = { ok: Object.keys(r.lines).length, dropped: r.dropped, failed: r.failed.length, why, errors: [...new Set(r.errors)].slice(0, 3), total: cards.length, at: Date.now(), route }
+      if (r.failed.length) console.warn('[dsh-xiaobenben] 没过核对、用模板兜底的：', why)
     }).catch(err => {
-      console.warn('[dsh-xiaobenben] 改写台词出错', err)
+      console.warn('[dsh-xiaobenben] 模型写台词出错', err)
       this.last = { ok: 0, failed: cards.length, why: {}, errors: [err?.message || String(err)], total: cards.length, at: Date.now(), route }
     }).finally(() => { this.job = null })
     return { ok: true, total: cards.length }
@@ -60,10 +66,14 @@ export class Styler {
 
   clear() { this.store.update(s => ({ ...s, styled: {}, styledMeta: null })); return { ok: true } }
 
-  status() {
+  async status() {
     const j = this.job
+    let pending = null
+    try { pending = (await this.pending(false)).length } catch (err) { console.warn('[dsh-xiaobenben] 数新事件失败', err?.message) }
     return {
-      running: j ? { total: j.total, done: j.done, ok: j.ok, failed: j.failed, route: j.route } : null,
+      asked: this.asked(),
+      pending,                              // 库里还没有的事（「更新台词」会发的件数）
+      running: j ? { total: j.total, done: j.done, ok: j.ok, failed: j.failed, stage: j.stage, route: j.route } : null,
       last: this.last,
       styled: Object.keys(this.store.read().styled || {}).length,
       meta: this.store.read().styledMeta || null,

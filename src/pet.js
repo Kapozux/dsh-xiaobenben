@@ -30,10 +30,17 @@ export class Pet {
     return raw ? p : p.then(v => this.#styled(v))
   }
 
-  /** 有 AI 改写过的就换成改写的说法（m.styled = true），没有的照旧说模板的 */
+  /** 库里有模型写好的版本，就从里面抽一个说（m.styled = true，m.variants 是全部版本）；没有的照旧说模板的 */
   #styled(v) {
     const styled = this.store.read().styled || {}
-    return { ...v, moments: v.moments.map(m => styled[m.card?.id] ? { ...m, text: styled[m.card.id], template: m.text, styled: true } : m) }
+    return { ...v, moments: v.moments.map(m => {
+      const got = styled[m.card?.id]
+      // 存的是 [一句话] 或 [{ text, anim }]（anim：模型给这句挑的动作）；更老的版本存的是一句字符串
+      const variants = (Array.isArray(got) ? got : got ? [got] : []).map(x => typeof x === 'string' ? { text: x } : x).filter(x => typeof x?.text === 'string' && x.text)
+      if (!variants.length) return m
+      const pick = variants[Math.floor(Math.random() * variants.length)]
+      return { ...m, text: pick.text, anim: pick.anim || m.anim, variants: variants.map(x => x.text), template: m.text, styled: true }
+    }) }
   }
 
   #moments(fresh) {
