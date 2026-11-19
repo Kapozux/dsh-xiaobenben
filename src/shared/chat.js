@@ -6,13 +6,13 @@
  * 每个心情一串 [按钮文字, [她的回话 ×5], 下一个心情]。按钮 ≤6 字，回话一句（每个按钮 5 句、每个心情 10 个按钮）、≤40 字、本肥鱼口吻。
  */
 export const MOOD_ANIM = {
-  happy: 'cheer', proud: 'proud', shy: 'bow', sad: 'sigh', pout: 'angry',
+  happy: 'cheer', proud: 'proud', shy: 'bow', sad: 'sigh', pout: 'pouty',          // 鼓着脸嘀咕，不是生气：生气（背过身、怒气符号）只留给连戳她
   sleepy: 'yawn', eat: 'eat', surprised: 'startle', thinking: 'file',
 }
 
 /** 第一轮的反应按钮 / 👍👎 的动作 → 接下来的心情 */
 export const ANIM_MOOD = {
-  cheer: 'happy', proud: 'proud', bow: 'shy', caught: 'shy', sigh: 'sad', angry: 'pout',
+  cheer: 'happy', proud: 'proud', bow: 'shy', caught: 'shy', sigh: 'sad', angry: 'pout', pouty: 'pout', coax: 'happy', doze: 'sleepy', wag: 'proud', headpat: 'happy', peek: 'shy', mutter: 'pout', bury: 'shy', curl: 'sad', full: 'eat', halt: 'surprised', pause: 'surprised', close: 'sad',
   yawn: 'sleepy', eat: 'eat', startle: 'surprised', file: 'thinking', work: 'thinking', poke: 'happy', idle: 'happy',
 }
 

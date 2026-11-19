@@ -5,6 +5,8 @@
  * 每件事带一个动作名（anim：work / sigh / cheer……），挂件按它换表情（src/shared/pet-engine.js 的 EXPR）。
  */
 import { buildMoments, dshTurns } from './core/moments.js'
+import { validLines } from './core/style.js'
+import { poseBeats } from './shared/emotion.js'
 import { loadClaudeTurns } from './sources/claude-turns.js'
 import { snapshot } from './live.js'
 
@@ -30,10 +32,18 @@ export class Pet {
     return raw ? p : p.then(v => this.#styled(v))
   }
 
-  /** 有 AI 改写过的就换成改写的说法（m.styled = true），没有的照旧说模板的 */
+  /** 库里有模型写好的版本，就从里面抽一个说（m.styled = true，m.variants 是全部版本）；没有的照旧说模板的 */
   #styled(v) {
-    const styled = this.store.read().styled || {}
-    return { ...v, moments: v.moments.map(m => styled[m.card?.id] ? { ...m, text: styled[m.card.id], template: m.text, styled: true } : m) }
+    const styled = this.store.read().styled || {}, at = this.store.read().styledAt || {}       // at：这件事的台词是什么时候写的（换过说法就又算没说过）
+    return { ...v, moments: v.moments.map(m => {
+      const got = styled[m.card?.id]
+      // 存的是 [{ text, anim, beats, options }]（老版本是一句字符串或 { text, anim }）。读出来只留认得的形状（分支只有一层），并且照现在的事件卡再核对
+      const variants = got && m.card ? validLines(m.card, got) : []      // 照现在的事件卡再核对一遍：时间、数字对不上了的不说
+      if (!variants.length) return m
+      const pick = variants[Math.floor(Math.random() * variants.length)]
+      // 姿势不看库里存的：第一拍永远是这件事的招牌姿势（m.anim），落点只有情绪真转了才换
+      return { ...m, lineAt: at[m.card.id] || 0, text: pick.text, beats: poseBeats(m.emotion, m.anim, pick.beats, pick.text), options: pick.options, variants: variants.map(x => x.text), template: m.text, styled: true }
+    }) }
   }
 
   #moments(fresh) {

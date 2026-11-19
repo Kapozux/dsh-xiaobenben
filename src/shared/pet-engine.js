@@ -3,6 +3,8 @@ import { CHAT, MOOD_ANIM, ANIM_MOOD } from './chat.js'
 import { IDLE } from './idle.js'
 import { emptyFeedback, normFeedback, pickRated } from './feedback.js'
 import { LIVE } from './live-lines.js'
+import { REST } from './feedback.js'
+import { EMOTIONS, TURN, turnAt, realTurn, replyEmotion, fitAnim } from './emotion.js'
 /**
  * 大肥鱼引擎：不依赖 React，dsh 浮层（Pet.jsx）和桌面窗口（desktop/）共用一份。
  *
@@ -19,13 +21,13 @@ import { LIVE } from './live-lines.js'
  * 左键点一下就翻旧账；只有主人点了才说话，不自己冒出来。
  */
 
-export const KIND = { work: '干活', late: '深夜', report: '汇报', sorry: '认错', complain: '挨骂', caught: '被抓包', stopped: '被喊停', stat: '总账' }
+export const KIND = { work: '干活', late: '深夜', report: '汇报', sorry: '认错', complain: '挨骂', caught: '被抓包', stopped: '被喊停', stat: '小账本' }
 export const MODES = [
   ['all', '随便', () => true],
   ['week', '最近一周', m => Date.now() - m.ts < 7 * 864e5],
   ['drama', '挨骂与认错', m => ['sorry', 'complain', 'caught', 'stopped'].includes(m.kind)],
   ['work', '干活与汇报', m => ['work', 'late', 'report'].includes(m.kind)],
-  ['stat', '总账', m => m.kind === 'stat'],
+  ['stat', '小账本', m => m.kind === 'stat'],
   ['idle', '只随便聊聊（不翻旧账）', () => false],
 ]
 
@@ -61,13 +63,39 @@ export function rounds(text) {
  */
 export const EXPR = {
   idle: 'normal', work: ['write', 'thinking'], file: ['write', 'thinking'], yawn: ['sleep', 'sleepy'], startle: 'surprised', drag: 'dangle',
-  caught: ['hide', 'shy'], bow: ['bow', 'shy'], sigh: 'sad', cheer: ['spout', 'wave', 'happy'], eat: ['count', 'eat'], poke: ['wave', 'happy'],
+  caught: 'shy', bow: 'bow', doze: 'sleep', sigh: 'sad', cheer: ['spout', 'wave', 'happy'], eat: ['count', 'eat'], poke: ['wave', 'happy'],
   angry: ['sulk', 'accuse', 'pout'], proud: 'proud', land: 'land',
+  // caught：本子捂着嘴；doze：趴在本子上睡（熬夜的招牌姿势）
+  // 台词里不写的身体动作，由这些来演（模型写台词时可以挑，见 core/style.js 的 ACTIONS；事件默认用哪个见 core/lines.js 的 EVENT_ANIM）
+  curl: 'curl-1', bury: 'curl-2', wag: 'tail-1', halt: 'halt', full: 'full', headpat: 'headpat', mutter: 'mutter', close: 'close', pause: 'pause', peek: 'peek',
+  coax: ['headpat', 'peek'], pouty: ['mutter', 'pout'],      // 撒娇；鼓着脸嘀咕（不是生气）
+}
+/** 两帧来回切的动作：摇尾巴 */
+export const SEQ = { 'tail-1': ['tail-1', 'tail-2'] }
+/** 头顶的小特效：哪张图配哪个（怒气只配背过身和翻本子质问，鼓脸不配）。爱心不跟图走：只有撒娇、亲昵的台词说到落点时才冒（emotion.js 的 fx） */
+export const FX_OF = { hide: 'sweat', surprised: 'exclaim', spout: 'sparkle', proud: 'sparkle', sleepy: 'zzz', sleep: 'zzz', accuse: 'anger', sulk: 'anger', mutter: 'dots', thinking: 'question', full: 'burp', eat: 'note', wave: 'note', 'curl-1': 'gloom', 'curl-2': 'gloom', close: 'sigh', pause: 'sweat', bow: 'sweat', halt: 'exclaim' }
+/** 特效都是矢量画的（64×64 的画板，深藏青描边），放多大都不糊 */
+const INK = '#1c2452'
+const svg = body => `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="${INK}" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round">${body}</svg>`
+export const FX_SVG = {
+  sweat: svg('<path d="M32 6C24 20 15 30 15 41a17 17 0 0 0 34 0C49 30 40 20 32 6Z" fill="#5db7f5"/><path d="M24 38c0 5 3 9 7 10" stroke="#fff" stroke-width="3"/>'),
+  exclaim: svg('<path d="M32 6c5 0 8 3 7 8l-3 24c0 3-8 3-8 0L25 14c-1-5 2-8 7-8Z" fill="#ef5261"/><circle cx="32" cy="52" r="6" fill="#ef5261"/>'),
+  question: svg('<path d="M18 22c0-9 6-15 14-15s14 5 14 13c0 7-5 9-9 12-3 2-3 4-3 7h-8c0-6 1-9 6-13 3-2 5-3 5-6 0-3-2-5-5-5s-5 2-6 6Z" fill="#ef5261"/><circle cx="30" cy="54" r="5.5" fill="#ef5261"/>'),
+  sparkle: svg('<path d="M26 6c2 12 6 16 18 18-12 2-16 6-18 18-2-12-6-16-18-18 12-2 16-6 18-18Z" fill="#ffd257"/><path d="M48 36c1 6 3 8 9 9-6 1-8 3-9 9-1-6-3-8-9-9 6-1 8-3 9-9Z" fill="#ffd257" stroke-width="3"/>'),
+  heart: svg('<path d="M32 56C14 44 6 34 6 23a13 13 0 0 1 26-3 13 13 0 0 1 26 3c0 11-8 21-26 33Z" fill="#ff7fa8"/><path d="M15 22c0-4 3-7 6-7" stroke="#fff" stroke-width="3"/>'),
+  zzz: svg('<path d="M8 10h20L8 34h20" stroke="#6f7fe0" stroke-width="6"/><path d="M34 30h14L34 46h14" stroke="#6f7fe0" stroke-width="5"/><path d="M50 46h9l-9 11h9" stroke="#6f7fe0" stroke-width="4"/>'),
+  anger: svg('<g stroke="#ef5261" stroke-width="7"><path d="M14 24c7 0 10-3 10-10"/><path d="M50 24c-7 0-10-3-10-10"/><path d="M14 40c7 0 10 3 10 10"/><path d="M50 40c-7 0-10 3-10 10"/></g>'),
+  dots: svg('<path d="M8 28C8 16 19 9 32 9s24 7 24 19-11 19-24 19c-3 0-6 0-8-1L13 54l3-11c-5-4-8-9-8-15Z" fill="#fff"/><g fill="#4a5380" stroke="none"><circle cx="21" cy="28" r="3.5"/><circle cx="32" cy="28" r="3.5"/><circle cx="43" cy="28" r="3.5"/></g>'),
+  note: svg('<path d="M26 44V12l24-6v32" stroke-width="5" stroke="#ff7fa8"/><ellipse cx="19" cy="46" rx="9" ry="7" fill="#ff7fa8"/><ellipse cx="43" cy="40" rx="9" ry="7" fill="#ff7fa8"/>'),
+  burp: svg('<path d="M30 46c-7 0-11-4-11-9 0-4 3-7 7-8 0-6 5-10 11-10 5 0 9 3 10 8 5 0 9 4 9 9s-4 10-10 10Z" fill="#fff"/><path d="M5 30h9M4 40h11" stroke-width="3"/>'),
+  sigh: svg('<path d="M20 48c-8 0-13-5-13-11s5-10 11-10c1-8 8-13 16-13 9 0 15 6 16 14 5 1 8 5 8 10 0 6-5 10-11 10Z" fill="#fff"/><path d="M26 48l-8 9" stroke-width="3"/>'),
+  gloom: svg('<g stroke="#5a648f" stroke-width="5"><path d="M16 8v40"/><path d="M32 8v30"/><path d="M48 8v22"/></g>'),
 }
 /** 姿势图（不是单纯换脸）；没这张图时退回哪个表情 */
 export const POSE_FALLBACK = {
   write: 'thinking', count: 'eat', hide: 'shy', accuse: 'pout', spout: 'happy', bow: 'shy',
   dangle: 'surprised', land: 'surprised', sit: 'normal', sleep: 'sleepy', sulk: 'pout', wave: 'happy',
+  'curl-1': 'sad', 'curl-2': 'shy', 'tail-1': 'proud', 'tail-2': 'proud', halt: 'surprised', full: 'eat', headpat: 'happy', mutter: 'pout', close: 'sad', pause: 'surprised', peek: 'shy',
 }
 export const POSES = Object.keys(POSE_FALLBACK)
 const LINGER = { short: 0.45, normal: 1, long: 1.7 }
@@ -91,6 +119,12 @@ const CSS = `
 @keyframes fy-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 /* 表情：没有单独表情图时，用代码加漫画符号 + 身体动作 */
 .fy-fig { position: relative; width: 100%; height: 100%; transform-origin: 50% 100%; }
+/* 头顶特效：头宽的五分之一左右，放在头的右上角外侧，不压脸和身体。弹出来，停一会儿，淡出 */
+.fy-fx { position: absolute; left: 76%; top: 11%; width: 13%; aspect-ratio: 1; pointer-events: none; opacity: 0; transform-origin: 50% 80%; }
+.fy-fx svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.fy-fx.on { animation: fy-fx 1.9s ease-out forwards; }
+.fy-fx.low { top: 25%; }
+@keyframes fy-fx { 0% { opacity: 0; transform: scale(.3); } 9% { opacity: 1; transform: scale(1.25); } 16% { transform: scale(.95); } 22% { transform: scale(1); } 80% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: translateY(-8%) scale(1); } }
 .fy-mark { position: absolute; left: 70%; top: 4%; font-weight: 700; font-size: 26px; line-height: 1; color: #2a241d; pointer-events: none; white-space: nowrap; opacity: 0; }
 .fy-e-happy .fy-mark, .fy-e-surprised .fy-mark, .fy-e-sleepy .fy-mark, .fy-e-shy .fy-mark, .fy-e-sad .fy-mark, .fy-e-thinking .fy-mark,
 .fy-e-eat .fy-mark, .fy-e-pout .fy-mark, .fy-e-proud .fy-mark { opacity: 1; }
@@ -120,7 +154,7 @@ const CSS = `
 @keyframes fy-zz { 0% { transform: translate(0, 0); opacity: 0; } 30% { opacity: 1; } 100% { transform: translate(14px, -22px); opacity: 0; } }
 @keyframes fy-drop { 0% { transform: translateY(0); opacity: 1; } 100% { transform: translateY(18px); opacity: 0; } }
 .fy-shadow { position: absolute; left: 50%; bottom: 2px; width: 46%; height: 10px; margin-left: -23%; border-radius: 50%; background: rgba(0,0,0,.22); filter: blur(3px); pointer-events: none; }
-.fy-bubble { position: absolute; left: 0; top: 0; pointer-events: auto; max-width: 340px; min-width: 120px; box-sizing: border-box; padding: 10px 14px 11px; border-radius: 16px;
+.fy-bubble { position: absolute; left: 0; top: 0; pointer-events: auto; max-width: 440px; min-width: 120px; box-sizing: border-box; padding: 10px 14px 11px; border-radius: 16px;
   background: #fffdf8; color: #2a241d; border: 2px solid #2a241d; box-shadow: 3px 4px 0 rgba(42,36,29,.9); font-size: 14px; line-height: 1.6; cursor: pointer;
   transform-origin: var(--ox, 50%) var(--oy, 100%); animation: fy-pop .22s cubic-bezier(.3,1.6,.5,1); }
 .fy-bubble.out { animation: fy-out .2s ease-in forwards; }
@@ -161,7 +195,14 @@ const CSS = `
 .fy-dot img { width: 100% !important; height: 100% !important; max-width: none !important; border-radius: 50%; object-fit: cover; display: block; pointer-events: none; }
 .fy-dot:hover { transform: scale(1.08) rotate(-4deg); }
 @keyframes fy-peek { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-3px) } }
-.fy-bubble > .fy-text, .fy-bubble > .fy-tag { margin-right: 16px; }
+.fy-bubble > .fy-text { margin-right: 16px; }
+.fy-bubble.has-thumbs > .fy-tag { margin-right: 74px; }
+.fy-bubble.has-thumbs:not(:has(> .fy-tag)) > .fy-text { margin-top: 16px; }
+/* 👍 👎：小图标，贴在右上角关闭按钮左边 */
+.fy-thumbs { position: absolute; top: 4px; right: 30px; display: flex; gap: 2px; }
+.fy-thumbs button { width: 22px; height: 20px; padding: 0; border: 0; border-radius: 6px; background: transparent; font-size: 12px; line-height: 20px; cursor: pointer; opacity: .55; filter: grayscale(.4); }
+.fy-thumbs button:hover { opacity: 1; filter: none; background: rgba(127,127,127,.18); }
+.fy-thumbs .fy-rated { font-size: 11px; line-height: 20px; opacity: .7; white-space: nowrap; }
 .fy-x { position: absolute; top: 4px; right: 6px; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: inherit; opacity: .45; font-size: 14px; line-height: 20px; cursor: pointer; }
 .fy-x:hover { opacity: 1; background: rgba(127,127,127,.18); }
 @keyframes fy-pop { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: scale(1); } }
@@ -225,9 +266,18 @@ export function createPet(host, opts) {
     if (srcs.normal) show(expr)
   })
   const mark = doc.createElement('div'); mark.className = 'fy-mark'
-  fig.append(img, mark); float.appendChild(fig); body.appendChild(float)
+  const fx = doc.createElement('div'); fx.className = 'fy-fx'
+  /** 在头顶弹一个特效（弹一下、停一两秒、淡出）。low：蹲着的姿势，头的位置低 */
+  function popFx(name, low = false) {
+    fx.className = 'fy-fx'
+    if (!FX_SVG[name]) return
+    fx.innerHTML = FX_SVG[name]; void fx.offsetWidth
+    fx.className = 'fy-fx on' + (low ? ' low' : '')
+  }
+  fig.append(img, mark, fx); float.appendChild(fig); body.appendChild(float)
   const MARK = { happy: '♪', surprised: '！', sleepy: 'z', shy: '///', sad: '💧', thinking: '…', eat: '♪', pout: '💢', proud: '✦' }
   const srcs = {}                              // 名字 → 地址（null = 没这张图）
+  let seqTimer = 0
   let expr = 'normal', exprTimer = 0, lastActive = Date.now(), walking = null, walkRaf = 0, walkTimer = 0
   const ready = Promise.all(FIGURES.map(n => Promise.resolve(opts.figureSrc(n)).catch(() => null).then(u => { srcs[n] = u })))
   const srcOf = n => srcs[n] || srcs.normal
@@ -243,6 +293,13 @@ export function createPet(host, opts) {
     float.className = 'fy-float' + (expr !== 'normal' && !srcs[expr] ? ' fy-e-' + expr : '')
     mark.textContent = expr === 'shy' ? '' : MARK[expr] || ''
     show(expr)
+    // 两帧来回切（摇尾巴）
+    clearInterval(seqTimer)
+    const seq = SEQ[expr]
+    if (seq && seq.every(n => srcs[n])) { let k = 0; seqTimer = setInterval(() => show(seq[++k % seq.length]), 170) }
+    // 头顶小特效：跟着这张图走
+    fx.className = 'fy-fx'
+    if (srcs[expr] && FX_OF[expr]) popFx(FX_OF[expr], expr.startsWith('curl'))
     if (ms) exprTimer = setTimeout(() => setExpr('normal'), ms)
   }
   const playAnim = (anim, ms = 0) => {
@@ -396,7 +453,7 @@ export function createPet(host, opts) {
     flingSpeed = Math.hypot(vx, vy)
     flung = fast || y < floor() - 120                                  // 甩出去 / 从高处松手：落地时说一句
     if (fast) say({ text: pickLine(LINES.fling), anim: 'drag', auto: true, rate: '被甩' })
-    else if (bubble && talk?.full && talk.line?.rate && !bubble.querySelector('.fy-rate')) {   // 慢慢放下：拎着时说的那句留着，补上 👍 👎
+    else if (bubble && talk?.full && talk.line?.rate && !bubble.querySelector('.fy-thumbs')) {   // 慢慢放下：拎着时说的那句留着，补上 👍 👎
       addRate(bubble, talk.line.rate, talk.line.text)
       clearTimeout(talk.timer); talk.timer = setTimeout(() => { hideBubble(); idle() }, 6000)
     }
@@ -437,6 +494,7 @@ export function createPet(host, opts) {
   // ---------- 说话 ----------
   let data = null, inflight = null
   const queues = {}
+  let fillAt = 0, otherAt = 0                  // 旧账都翻过以后：接了几句了（每三句里最多一句碎碎念）、其余几样轮到哪一样
   // 反馈：共用一份（opts.feedback.load / save），没有就只记在这只的偏好里
   let fb = emptyFeedback(), fbTimer = 0
   Promise.resolve(opts.feedback?.load?.()).then(d => {
@@ -535,15 +593,23 @@ export function createPet(host, opts) {
     const textEl = b.querySelector('.fy-text')
     const html = (k, s) => `<div${rs[k].who === 'master' ? ' class="fy-m"' : ''}>${paint(s)}</div>`
     // 先用全文撑出最终大小再定位，打字时气泡不抖
-    textEl.innerHTML = rs.map((r, k) => html(k, r.text)).join(''); b.style.width = Math.min(340, Math.max(line.react || line.chat ? 250 : 120, b.offsetWidth)) + 'px'
+    textEl.innerHTML = rs.map((r, k) => html(k, r.text)).join(''); b.style.width = Math.min(440, Math.max(line.react || line.chat || line.buttons || line.emo || line.after ? 250 : 120, b.offsetWidth + 2)) + 'px'      // +2：宽度取整以后别让最后一个字掉到下一行
     textEl.innerHTML = ''
     positionBubble()
     const t = talk = { i: 0, typed: '', full: false, timer: 0, line }
+    // 情绪有转折的：说到落点（最后一小句）时换动作。落点在第几行、第几个字
+    // 落点：最后一小句。招牌姿势不动，只在头顶冒这种情绪的特效（撒娇冒爱心、邀功冒星星）；情绪真有转折的（认错到最后「嘿嘿」「保证」）才换姿势
+    let turn = null
+    if (line.turn || line.landFx) { const at = turnAt(line.text); if (at >= 0) { const before = line.text.slice(0, at), row = before.split('\n').length - 1; turn = { row: Math.min(row, parts.length - 1), col: [...before.split('\n').at(-1)].length, anim: line.turn && realTurn(line.text) ? line.turn : null, fx: line.landFx } } }
+    let landed = false
+    const doTurn = () => { if (turn) { const { anim, fx: f } = turn; turn = null; landed = true; if (anim) playAnim(anim); if (f) popFx(f, expr.startsWith('curl')) } }
     if (expr === 'flip') exprTimer = setTimeout(() => playAnim(line.anim || 'idle'), 900)   // 第 6 帧「看到了」先停一下
     else if (line.anim) playAnim(line.anim)
     const paintTo = (s) => { textEl.innerHTML = parts.slice(0, t.i).map((p, k) => html(k, p)).join('') + html(t.i, s); positionBubble() }
     function startBeat() {
       if (talk !== t) return
+      const ba = line.beats?.[t.i]?.a                      // 模型写的台词每一拍带一个动作
+      if (t.i > 0 && ba && EXPR[ba] && ba !== line.beats[t.i - 1]?.a) playAnim(ba)
       const target = parts[t.i]
       let n = 0
       t.full = false
@@ -551,20 +617,25 @@ export function createPet(host, opts) {
         if (talk !== t) return
         n++
         paintTo([...target].slice(0, n).join(''))
+        if (turn && t.i === turn.row && n > turn.col) doTurn()
         if (n < [...target].length) { t.timer = setTimeout(tick, TYPE_MS) } else beatDone()
       }
-      t.finish = () => { clearTimeout(t.timer); paintTo(target); beatDone() }
+      t.finish = () => { clearTimeout(t.timer); paintTo(target); if (turn && t.i >= turn.row) doTurn(); beatDone() }
       tick()
     }
     function beatDone() {
       if (talk !== t) return
       t.full = true
       const isLast = t.i === parts.length - 1
+      if (isLast && line.landFx && !landed) { landed = true; popFx(line.landFx, expr.startsWith('curl')) }     // 只有一小句的：说完冒
       if (isLast && line.rate && !dragging) addRate(b, line.rate, line.text)
+      if (isLast && line.buttons) addButtons(b, line.buttons)
+      if (isLast && line.emo && EMOTIONS[line.emo]) addEmo(b, line.emo)
+      if (isLast && line.after) addAfter(b, line.after)
       if (isLast && line.react) addReactions(b, line.react)
       else if (isLast && line.chat) addChat(b, line.chat)
       const k = LINGER[opts.prefs.get().linger] || 1           // 气泡停多久：短 0.45 / 默认 1 / 长 1.7
-      const read = k * Math.max(isLast ? (line.react || line.chat ? 9000 : line.rate ? 6000 : 3500) : 700, [...parts[t.i]].length * (isLast ? 110 : 40))
+      const read = k * Math.max(isLast ? (line.buttons ? 30000 : line.react || line.chat || line.emo || line.after ? 9000 : line.rate ? 6000 : 3500) : 700, [...parts[t.i]].length * (isLast ? 110 : 40))
       t.timer = setTimeout(() => { if (isLast) { hideBubble(); idle() } else { t.i++; startBeat() } }, read)
     }
     // 鼠标停在气泡上就别收（在犹豫点哪个反应）
@@ -584,17 +655,79 @@ export function createPet(host, opts) {
     startBeat()
   }
 
-  /** 说完后底下那一排：👍 👎（记下来，以后这一类多说 / 少说）+ 一个这一类专属的反应（点了她接一句）+「再翻一件」。 */
+  /** 她问主人一件事时底下的按钮：[[字, 点了干什么]]（第一次打开问要不要用模型写台词） */
+  function addButtons(b, list) {
+    const row = doc.createElement('div'); row.className = 'fy-react'
+    for (const [label, fn] of list) {
+      const btn = doc.createElement('button'); btn.textContent = label
+      btn.addEventListener('pointerdown', e => e.stopPropagation())
+      btn.addEventListener('click', e => { e.stopPropagation(); hideBubble(); idle(); fn() })
+      row.appendChild(btn)
+    }
+    b.appendChild(row)
+    positionBubble()
+  }
+  /** 这种情绪下主人能回的话：[按钮字, 提示, 点了干什么]。她回一句（动作跟着那句走），接着就是平常的闲聊 */
+  const emoButtons = (emotion, m = null) => EMOTIONS[emotion].buttons.map(([label, replies, anim, mood]) => [label, null, () => {
+    fb.clicks[label] = (fb.clicks[label] || 0) + 1; logFb('回话按钮', label, 1); saveFb()
+    say(m ? { text: pick(replies), anim, after: m } : { text: pick(replies), anim, chat: mood })       // 旧账的回话到此为止；碎碎念接着闲聊
+  }])
+  /** 模型给这件事写好的按钮（库里读的，不调模型）：点了她接那一句，到此为止 */
+  const optionButtons = m => m.options.map(o => [o.label, null, () => {
+    fb.clicks[o.label] = (fb.clicks[o.label] || 0) + 1; logFb('回话按钮', o.label, 1); saveFb()
+    const beats = o.reply.beats
+    say({ text: beats.map(b => b.t).join('\n'), anim: EXPR[beats[0].a] ? beats[0].a : m.anim, beats, after: m })
+  }])
+  /** 点完回话以后：只剩「再翻一件」、右上角的 👍👎 和关闭 */
+  function addAfter(b, m) {
+    addThumbs(b,
+      ['这种好玩', () => { vote(m, 1); say({ text: pick(REPLY.up), anim: 'proud', after: m }) }],
+      ['这种没意思', () => { vote(m, -1); say({ text: pick(REPLY.down), anim: 'sigh', after: m }) }])
+    const row = doc.createElement('div'); row.className = 'fy-react'
+    const btn = doc.createElement('button'); btn.textContent = '再翻一件'
+    btn.addEventListener('pointerdown', e => e.stopPropagation())
+    btn.addEventListener('click', e => { e.stopPropagation(); poke() })
+    row.appendChild(btn); b.appendChild(row)
+    positionBubble()
+  }
+  /** 碎碎念、撒娇底下的按钮：这种情绪的两三个 + 「再翻一件」 */
+  function addEmo(b, emotion) {
+    const row = doc.createElement('div'); row.className = 'fy-react'
+    for (const [label, , fn] of [...emoButtons(emotion), ['再翻一件', null, () => poke()]]) {
+      const btn = doc.createElement('button'); btn.textContent = label
+      btn.addEventListener('pointerdown', e => e.stopPropagation())
+      btn.addEventListener('click', e => { e.stopPropagation(); fn() })
+      row.appendChild(btn)
+    }
+    b.appendChild(row)
+    positionBubble()
+  }
+  /** 右上角的小 👍 👎（关闭按钮左边）：[提示, 点了干什么] ×2 */
+  function addThumbs(b, up, down) {
+    b.querySelector('.fy-thumbs')?.remove()
+    const box = doc.createElement('div'); box.className = 'fy-thumbs'
+    for (const [label, [title, fn]] of [['👍', up], ['👎', down]]) {
+      const btn = doc.createElement('button'); btn.textContent = label; btn.title = title
+      btn.addEventListener('pointerdown', e => e.stopPropagation())
+      btn.addEventListener('click', e => { e.stopPropagation(); fn(box) })
+      box.appendChild(btn)
+    }
+    b.classList.add('has-thumbs'); b.appendChild(box)
+  }
+  /** 说完一件旧账：右上角小 👍 👎（记下来，以后这一类多说 / 少说），底下一排是这件事的情绪对应的回话按钮 +「再翻一件」 */
   function addReactions(b, m) {
+    addThumbs(b,
+      ['这种好玩', () => { vote(m, 1); say({ text: pick(REPLY.up), anim: 'proud', chat: 'proud' }) }],
+      ['这种没意思', () => { vote(m, -1); say({ text: pick(REPLY.down), anim: 'sigh', chat: 'sad' }) }])
+    const emo = replyEmotion(m)
     const row = doc.createElement('div'); row.className = 'fy-react'
     const opts2 = [
-      ['👍', '这种好玩', () => { vote(m, 1); say({ text: pick(REPLY.up), anim: 'proud', chat: 'proud' }) }],
-      ['👎', '这种没意思', () => { vote(m, -1); say({ text: pick(REPLY.down), anim: 'sigh', chat: 'sad' }) }],
-      ...shuffle((REACT[m.kind] || REACT.work).filter(r => r.replies.length)).slice(0, 1).map(r => [r.label, null, () => say({ text: pick(r.replies), anim: r.anim, chat: ANIM_MOOD[r.anim] || 'happy' })]),
+      // 模型给这件事写过按钮的用模型写的；没有就按情绪给默认的（认错：原谅你了 / 还敢？；夸主人的：你也辛苦了 / 还好有你……见 emotion.js）。老数据没标情绪的，按大类抽一个
+      ...(m.options?.length >= 2 ? optionButtons(m) : EMOTIONS[emo] ? emoButtons(emo, m) : shuffle((REACT[m.kind] || REACT.work).filter(r => r.replies.length)).slice(0, 1).map(r => [r.label, null, () => say({ text: pick(r.replies), anim: r.anim, chat: ANIM_MOOD[r.anim] || 'happy' })])),
       ['再翻一件', null, () => poke()],
     ]
-    for (const [label, title, fn] of opts2) {
-      const btn = doc.createElement('button'); btn.textContent = label; if (title) { btn.title = title; btn.className = 'emo' }
+    for (const [label, , fn] of opts2) {
+      const btn = doc.createElement('button'); btn.textContent = label
       btn.addEventListener('pointerdown', e => e.stopPropagation())
       btn.addEventListener('click', e => { e.stopPropagation(); fn() })
       row.appendChild(btn)
@@ -604,22 +737,16 @@ export function createPet(host, opts) {
   }
   /** 短句（拖、甩、落地、碎碎念）底下一对小 👍 👎：记下来，👎 的以后不说，👍 的多说 */
   function addRate(b, what, text) {
-    const row = doc.createElement('div'); row.className = 'fy-react fy-rate'
-    const done = msg => { row.innerHTML = ''; const s = doc.createElement('span'); s.className = 'fy-rated'; s.textContent = msg; row.appendChild(s); positionBubble() }
-    for (const [label, d, msg] of [['👍', 1, '记下了，以后多说这句'], ['👎', -1, '好，这句以后不说了']]) {
-      const btn = doc.createElement('button'); btn.textContent = label; btn.className = 'emo'; btn.title = d > 0 ? '这句好玩' : '这句不好'
-      btn.addEventListener('pointerdown', e => e.stopPropagation())
-      btn.addEventListener('click', e => {
-        e.stopPropagation(); rateLine(what, text, d)
-        // 打完分她要接一句（按这句是哪种：落地 / 被拎 / 碎碎念），然后接着聊
-        const g = LINES.rateReply[/^落地/.test(what) ? 'land' : /^(被拎|拎|被甩)/.test(what) ? 'drag' : 'idle']
-        const reply = g && pickLine(g[d > 0 ? 'up' : 'down'])
-        if (reply) say({ text: reply, anim: d > 0 ? 'proud' : 'sigh', chat: d > 0 ? 'proud' : 'sad' })
-        else { done(msg); if (talk) { clearTimeout(talk.timer); talk.timer = setTimeout(() => { hideBubble(); idle() }, 1500) } }
-      })
-      row.appendChild(btn)
+    const rate = (d, msg) => box => {
+      rateLine(what, text, d)
+      // 打完分她要接一句（按这句是哪种：落地 / 被拎 / 碎碎念），然后接着聊
+      const g = LINES.rateReply[/^落地/.test(what) ? 'land' : /^(被拎|拎|被甩)/.test(what) ? 'drag' : 'idle']
+      const reply = g && pickLine(g[d > 0 ? 'up' : 'down'])
+      if (reply) return say({ text: reply, anim: d > 0 ? 'proud' : 'sigh', chat: d > 0 ? 'proud' : 'sad' })
+      box.innerHTML = ''; const s2 = doc.createElement('span'); s2.className = 'fy-rated'; s2.textContent = msg; box.appendChild(s2)
+      if (talk) { clearTimeout(talk.timer); talk.timer = setTimeout(() => { hideBubble(); idle() }, 1500) }
     }
-    b.appendChild(row)
+    addThumbs(b, ['这句好玩', rate(1, '记下了')], ['这句不好', rate(-1, '以后不说了')])
     positionBubble()
   }
   /**
@@ -702,10 +829,7 @@ export function createPet(host, opts) {
     // 碎碎念：「只随便聊聊」时每次都是；「随便」时大约四次里一次；别的模式不说
     const pr0 = opts.prefs.get()
     const idleOdds = pr0.mode === 'idle' ? 1 : (pr0.mode || 'all') === 'all' ? (typeof pr0.idleOdds === 'number' ? pr0.idleOdds : 0.25) : 0
-    if (Math.random() < idleOdds) {
-      const line = pickIdle()
-      if (line) return say({ text: line.text, tag: '碎碎念', anim: MOOD_ANIM[line.mood] || 'idle', chat: line.mood, rate: '碎碎念' })
-    }
+    if (idleOdds >= 1) { const line = pickIdle(); if (line) return sayIdle(line) }     // 「只随便聊聊」：不用翻本子
     const me = thinking = { nags: 0 }
     hideBubble()
     const flipping = flipStart()                  // 有翻本子的帧就翻本子，不弹「想想」气泡
@@ -717,30 +841,63 @@ export function createPet(host, opts) {
     thinking = null
     if (flipping) { flipFound(); await new Promise(r => setTimeout(r, 380)) }   // 「看到了」，停一下再开口
     if (!d) { flipStop(); return say({ text: '本肥鱼脑子卡住了，想不起来……（读记录失败了）', anim: 'sigh' }) }
+    // 自动更新写了新台词：不弹窗，主人点她的时候先说一句（只说一次）
+    if (d.news > 0) { const n = d.news; d.news = 0; flipStop(); return say({ text: `本肥鱼新记了 ${n} 件事哦～\n主人再点一下，翻给你看嘛。`, anim: 'proud', landFx: 'sparkle' }) }
     const pr = opts.prefs.get()
     const f = MODES.find(m => m[0] === pr.mode)?.[2] || (() => true)
-    const qk = (pr.mode || 'all') + (pr.priv === false ? 0 : 1)
-    if (!queues[qk]?.length) {
-      // 带权重洗牌：👍 多的那一类更常出现，👎 多的少出现（加权蓄水池抽样的 key = u^(1/w)，大的先出）
-      // 👎 过的那一件不再翻；👍 过的那一件权重再乘 3
-      const w = m => { const [u, dn] = fb.kinds[m.kind] || [0, 0]; return (1 + u) / (1 + dn * 2) * ((fb.lines[m.text] || 0) > 0 ? 3 : 1) }
-      queues[qk] = d.moments.filter(m => f(m) && (pr.priv === false || !m.sensitive.length) && !((fb.lines[m.text] || 0) < 0))
-        .map(m => [Math.random() ** (1 / w(m)), m]).sort((a, b) => a[0] - b[0]).map(x => x[1])
-    }
-    const m = queues[qk].pop()
-    if (!m) {
-      return say({ text: d.moments.length ? '这一类本肥鱼想不起来了……右键换一类？' : '本肥鱼还没跟主人一起干过活呢。派点活给本肥鱼？', anim: 'poke' })
-    }
-    sayMoment(m)
+    // 永远有话说。接替顺序：没说过的（模型写的在前）→ 换了说法的旧事 → 歇够 3 天的旧事 → 碎碎念 → 往年今日 → 小账本 → 点过 👍 的老台词。
+    // 后面四样轮换：碎碎念最多占三分之一，其余三样轮着来（设置里能一样一样关）；「过两天再来嘛」一天最多说一次。
+    const w = m => { const [u, dn] = fb.kinds[m.kind] || [0, 0]; return (1 + u) / (1 + dn * 2) * ((fb.lines[m.text] || 0) > 0 ? 3 : 1) }
+    const draw = list => list.map(m => [Math.random() ** (1 / w(m)), m]).sort((a, b) => b[0] - a[0])[0]?.[1] || null
+    const cand = d.moments.filter(m => f(m) && (pr.priv === false || !m.sensitive.length) && !((fb.lines[m.text] || 0) < 0))
+    const seen = m => fb.shown[m.card?.id]
+    const age = m => (seen(m) ? Date.now() - seen(m)[1] : Infinity)
+    const never = cand.filter(m => !seen(m))
+    const reworded = cand.filter(m => seen(m) && m.lineAt && seen(m)[1] < m.lineAt)          // 说过，但后来换了说法
+    const rested = cand.filter(m => seen(m) && !(m.lineAt && seen(m)[1] < m.lineAt) && age(m) >= REST)
+    const m = draw(never.filter(x => x.styled)) || draw(never) || draw(reworded) || draw(rested)
+    // 还有旧账可翻的时候，「随便」模式大约四次里一次碎碎念；都翻过以后归下面的轮换管（碎碎念最多三分之一）
+    if (m && Math.random() < idleOdds) { const line = pickIdle(); if (line) { flipStop(); return sayIdle(line) } }
+    if (m) return sayMoment(m)
+    if (!d.moments.length) return say({ text: '本肥鱼还没跟主人一起干过活呢。派点活给本肥鱼？', anim: 'poke' })
+    // 都翻过了：一天只说一次「过两天再来」，之后就拿别的话接上，不冷场
+    const today = new Date().toDateString()
+    if (pr.dryDay !== today) { opts.prefs.set({ dryDay: today }); return say({ text: '这几天能翻的旧账本肥鱼都翻过啦，过两天再来嘛～', anim: 'coax', emo: 'coax', landFx: 'heart' }) }
+    const fill = pr.fill || {}, DAY = 864e5
+    // 轮换：碎碎念最多占三分之一（每三句里最多一句），其余几样轮着来
+    const idleSrc = fill.idle !== false ? () => { const l = pickIdle(); return l && (() => sayIdle(l)) } : null
+    // 每一样先挑歇够一天的；都是今天刚翻过的（比如一口气把旧账翻完），就挑这一样里最久没翻的，别让碎碎念一个人顶着
+    const from = list => { const x = draw(list.filter(m => age(m) >= DAY)) || [...list].sort((a, b) => age(b) - age(a))[0]; return x && (() => sayMoment(x)) }
+    const others = [
+      ['today', () => from(cand.filter(m => m.event === 'stat_today'))],
+      ['stat', () => from(cand.filter(m => m.kind === 'stat' && m.event !== 'stat_today'))],
+      ['liked', () => from(cand.filter(m => (fb.lines[m.text] || 0) > 0))],
+    ].filter(([k]) => fill[k] !== false)
+    const nextOther = () => { for (let n = 0; n < others.length; n++) { const go = others[(otherAt + n) % others.length][1](); if (go) { otherAt = (otherAt + n + 1) % others.length; return go } } return null }
+    const idleTurn = fillAt % 3 === 2                    // 第三句才轮到碎碎念
+    const go = (idleTurn ? idleSrc?.() : nextOther()) || nextOther() || idleSrc?.()     // 轮到的那样没得说，就换另一边
+    if (go) { fillAt++; return go() }
+    const any = draw(cand)                              // 四样都关了、或者都没得说：翻一件最久没翻的旧账
+    return any ? sayMoment([...cand].sort((a, b) => age(b) - age(a))[0]) : say({ text: '这一类本肥鱼想不起来了……右键换一类？', anim: 'poke' })
   }
   function sayMoment(m) {
     ctx.moment = { kind: m.kind, t: Date.now() }
+    if (m.card?.id) { fb.shown[m.card.id] = [(fb.shown[m.card.id]?.[0] || 0) + 1, Date.now()]; saveFb() }      // 记一笔：翻过几次、什么时候翻的
     const ago = Math.round((Date.now() - m.ts) / 864e5)
     const tag = [KIND[m.kind], m.kind === 'stat' ? null : ago <= 0 ? '今天' : `${ago} 天前`].filter(Boolean).join(' · ')
-    say({ text: m.text, tag: m.sensitive.length ? tag + ' · 私事' : tag, priv: m.sensitive.length > 0, anim: m.anim, react: m })
+    // 台词是在夸主人、谢主人的：姿势换成这种情绪自己的（求摸头），不和邀功的竖拇指一样
+    const emo = replyEmotion(m), thanks = emo === 'thanks' && emo !== m.emotion
+    const anim = thanks ? EMOTIONS.thanks.def : m.anim
+    const beats = thanks && m.beats ? m.beats.map(b => ({ ...b, a: anim })) : m.beats
+    say({ text: m.text, tag: m.sensitive.length ? tag + ' · 私事' : tag, priv: m.sensitive.length > 0, anim, beats, turn: m.beats ? null : TURN[m.emotion] || null, landFx: EMOTIONS[emo]?.fx || null, react: m })
   }
 
 
+  /** 说一句碎碎念：是在跟主人撒娇，所以鼓脸（pout）、害羞这类心情都演成撒娇，不演成生气；底下给撒娇的那组按钮 */
+  function sayIdle(line) {
+    const anim = line.mood === 'pout' || line.mood === 'shy' ? 'coax' : fitAnim('coax', MOOD_ANIM[line.mood] || 'coax')
+    say({ text: line.text, tag: '碎碎念', anim, emo: 'coax', landFx: 'heart', rate: '碎碎念' })
+  }
   /** 挑一句碎碎念：只要现在这个钟点能说的（没写 hours 的随时能说），最近说过的 60 句先不重复 */
   const idleSeen = []
   function pickIdle() {
@@ -860,7 +1017,7 @@ export function createPet(host, opts) {
     if (opts.loadNow) item((pr.live === false ? '☐' : '☑') + ' 陪你等活（AI 干活、跑完、你骂它时她会说）', false, () => opts.prefs.set({ live: pr.live === false }))
     item('先收起来', false, fold)
     m.appendChild(doc.createElement('hr'))
-    const p = doc.createElement('p'); p.textContent = (opts.note?.(data) || '') + '都在本机算，不调模型。一碗白饭 = 5 万 token。'; m.appendChild(p)
+    const p = doc.createElement('p'); p.textContent = (opts.note?.(data) || '') + '点她只从本机的本子里翻，不调模型。一碗白饭 = 5 万 token。'; m.appendChild(p)
     root.appendChild(m)
     m.style.left = clamp(mx, 6, W() - m.offsetWidth - 6) + 'px'; m.style.top = clamp(my, 6, H() - m.offsetHeight - 6) + 'px'
     m.addEventListener('pointerdown', e => e.stopPropagation())
@@ -913,7 +1070,13 @@ export function createPet(host, opts) {
         if (!list.length) return say({ text: `「${KIND[a.kind] || a.kind}」这一类本肥鱼一件都没有。`, anim: 'sigh' })
         return sayMoment(list[Math.floor(Math.random() * list.length)])
       }
-      case 'idle': { const l = pickIdle(); if (l) say({ text: l.text, tag: '碎碎念', anim: MOOD_ANIM[l.mood] || 'idle', chat: l.mood, rate: '碎碎念' }); return }
+      case 'idle': { const l = a.match ? IDLE.find(x => x.text.includes(a.match)) : pickIdle(); if (l) sayIdle(l); return }
+      case 'fx': hideBubble(); setExpr('normal'); popFx(a.name, !!a.low); return Object.keys(FX_SVG)
+      case 'event': {            // 说一件指定事件 / 指定情绪的旧账（调试、截图用）
+        const d = data || await load()
+        const m = (d?.moments || []).find(m => (a.id ? m.card?.id === a.id : a.event ? m.event === a.event : m.emotion === a.emotion) && !m.sensitive.length)
+        return m ? (sayMoment(m), { event: m.event, emotion: m.emotion, anim: m.anim, text: m.text, styled: !!m.styled, options: (m.options || []).map(o => o.label) }) : null
+      }
       case 'flip': hideBubble(); if (flipStart()) setTimeout(() => { flipFound(); setTimeout(flipStop, 900) }, 1500); return
       case 'walk': return walk(a.dir || 0)
       case 'sulk': pokes = []; sulkUntil = Date.now() + 4000; vy = -900; squash(0.8, 1.2, 160); kick(); return say({ text: pick(REPLY.angry), anim: 'angry' })
@@ -938,7 +1101,10 @@ export function createPet(host, opts) {
 
   return {
     say, poke, debug,
+    /** 重新取一遍台词（模型写完新的之后） */
+    reload: () => load(true),
     destroy() {
+      clearInterval(seqTimer)
       cancelAnimationFrame(raf); clearInterval(liveTimer); clearTimeout(liveFirstTimer); clearInterval(dragTalk); clearTimeout(fbTimer); Promise.resolve(opts.feedback?.save?.(fb)).catch(() => {}); cancelAnimationFrame(walkRaf); clearTimeout(walkTimer); walking = null; clearInterval(restTimer); clearTimeout(blinkTimer); clearTimeout(exprTimer); clearTimeout(flipTimer); hideBubble(); closeMenu(); win.removeEventListener('resize', onResize); doc.removeEventListener('pointerdown', onDocDown, true); doc.removeEventListener('keydown', onKey); root.remove()
     },
   }

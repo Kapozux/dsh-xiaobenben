@@ -33,7 +33,16 @@ app.whenReady().then(() => {
       const f = path.join(STATE_DIR, 'feedback.json')
       if (req.method === 'PUT') return req.text().then(t => {
         if (t.length > 512 * 1024) return new Response('too big', { status: 413 })
-        try { JSON.parse(t); fs.writeFileSync(f, t); return new Response('ok') } catch (err) { console.error('[大肥鱼] 存反馈失败', err.message); return new Response(err.message, { status: 400 }) }
+        try {
+          const fb = JSON.parse(t)
+          // 网页那只翻过的事别被这一份盖掉：每件事取次数大的、时间晚的（和 src/shared/feedback.js 的 mergeShown 一个意思）
+          try {
+            const old = JSON.parse(fs.readFileSync(f, 'utf8')).shown || {}
+            fb.shown = fb.shown || {}
+            for (const [k, v] of Object.entries(old)) { const c = fb.shown[k]; if (Array.isArray(v) && v.length === 2) fb.shown[k] = Array.isArray(c) ? [Math.max(c[0], v[0]), Math.max(c[1], v[1])] : v }
+          } catch {}
+          fs.writeFileSync(f, JSON.stringify(fb)); return new Response('ok')
+        } catch (err) { console.error('[大肥鱼] 存反馈失败', err.message); return new Response(err.message, { status: 400 }) }
       })
       try { return new Response(fs.readFileSync(f), { headers: { 'content-type': 'application/json' } }) } catch { return new Response('null', { headers: { 'content-type': 'application/json' } }) }
     }

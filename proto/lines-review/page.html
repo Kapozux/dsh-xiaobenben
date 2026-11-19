@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>台词打分</title>
+<style>
+  :root { --bg: #f3f6fc; --card: #fff; --ink: #1d2740; --dim: #7a86a6; --you: #d9601a; --line: #dfe5f3; --blue: #3b6fe0;
+    --haha: #f2a11b; --feel: #e0568a; --dry: #8a93a8; --lost: #5c6bc0; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #131826; --card: #1d2436; --ink: #e8ecf8; --dim: #8f9abb; --you: #ff9a5c; --line: #2c3550; --blue: #7ea2ff; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--ink); font: 17px/1.6 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; display: flex; flex-direction: column; align-items: center; padding: 28px 16px 40px; }
+  header { width: 100%; max-width: 640px; display: flex; align-items: center; gap: 12px; color: var(--dim); font-size: 14px; }
+  .bar { flex: 1; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--blue); transition: width .2s; }
+  main { width: 100%; max-width: 640px; flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 28px; }
+  .stage { display: flex; align-items: flex-end; gap: 14px; min-height: 230px; }
+  .stage img { width: 84px; height: 84px; object-fit: contain; flex: none; }
+  .bubble { position: relative; background: var(--card); border: 1px solid var(--line); border-radius: 18px 18px 18px 4px; padding: 20px 22px; font-size: 21px; line-height: 1.75; box-shadow: 0 6px 22px rgba(30, 50, 110, .08); flex: 1; }
+  .bubble p { margin: 0; overflow-wrap: anywhere; }
+  .bubble p.you { color: var(--you); }
+  .btns { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  button { font: inherit; font-size: 18px; font-weight: 600; padding: 16px 4px 12px; border-radius: 14px; border: 2px solid var(--c); background: transparent; color: var(--c); cursor: pointer; }
+  button:hover, button.on { background: var(--c); color: #fff; }
+  button small { display: block; font-weight: 400; font-size: 12px; opacity: .7; margin-top: 2px; }
+  .hint { text-align: center; color: var(--dim); font-size: 13px; }
+  .done { text-align: center; font-size: 20px; line-height: 2; }
+  @media (max-width: 480px) { .btns { grid-template-columns: repeat(2, 1fr); } .bubble { font-size: 19px; } }
+</style>
+</head>
+<body>
+<header><span id="count"></span><div class="bar"><i id="bar"></i></div></header>
+<main id="main"></main>
+<script>
+const BTN = [['哈哈', 'haha'], ['有感觉', 'feel'], ['干巴', 'dry'], ['看不懂', 'lost']]
+let items = [], ratings = {}, at = 0
+const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e }
+// 和气泡里一样：一轮一行，去掉「本肥鱼：」「主人：」标签，主人的话换颜色
+const rounds = text => text.split('\n').filter(l => l.trim()).map(l => { const m = l.match(/^(本肥鱼|主人)\s*[：:]\s*/); return { you: m?.[1] === '主人', text: m ? l.slice(m[0].length) : l } })
+
+function draw() {
+  const done = Object.keys(ratings).length
+  document.getElementById('count').textContent = `${Math.min(at + 1, items.length)} / ${items.length}`
+  document.getElementById('bar').style.width = done / items.length * 100 + '%'
+  const main = document.getElementById('main')
+  main.replaceChildren()
+  if (at >= items.length) {
+    main.append(el('div', { className: 'done' }, done >= items.length ? '标完了，谢谢主人。可以关掉这一页了，回去看统计。' : `还有 ${items.length - done} 条没标`))
+    if (done >= items.length) fetch('/finish', { method: 'POST' })
+    return
+  }
+  const it = items[at]
+  const bubble = el('div', { className: 'bubble' }, ...rounds(it.text).map(r => el('p', { className: r.you ? 'you' : '' }, r.text)))
+  main.append(el('div', { className: 'stage' }, el('img', { src: '/head.png', alt: '' }), bubble))
+  main.append(el('div', { className: 'btns' }, ...BTN.map(([label, cls], i) => {
+    const b = el('button', { className: ratings[it.id] === label ? 'on' : '', onclick: () => rate(label) }, label, el('small', {}, String(i + 1)))
+    b.style.setProperty('--c', `var(--${cls})`)
+    return b
+  })))
+  main.append(el('div', { className: 'hint' }, '键盘 1 2 3 4 也行 · ← 回上一条改'))
+}
+async function rate(label) {
+  const it = items[at]
+  ratings[it.id] = label
+  at++
+  draw()
+  const r = await fetch('/rate', { method: 'POST', body: JSON.stringify({ id: it.id, rating: label }) })
+  if (!r.ok) { delete ratings[it.id]; at = items.indexOf(it); draw() }
+}
+addEventListener('keydown', e => {
+  if (at < items.length && '1234'.includes(e.key)) rate(BTN[+e.key - 1][0])
+  if (e.key === 'ArrowLeft' && at > 0) { at--; draw() }
+  if (e.key === 'ArrowRight' && at < items.length && ratings[items[at].id]) { at++; draw() }
+})
+fetch('/data').then(r => r.json()).then(d => {
+  items = d.items; ratings = d.ratings
+  at = items.findIndex(i => !ratings[i.id]); if (at < 0) at = items.length
+  draw()
+})
+</script>
+</body>
+</html>

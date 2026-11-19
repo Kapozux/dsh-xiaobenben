@@ -1,7 +1,7 @@
 // 大肥鱼的台词：dsh 事件和 Claude Code JSONL 切出来的轮一样算；挑时刻的规则；私事只看原话。
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildMoments, claudeTurns, dshTurns, fill, fillFit, say, ago, topic, width } from '../src/core/moments.js'
+import { buildMoments, claudeTurns, dshTurns, fill, fillFit, say, ago, topic, width, timeWord } from '../src/core/moments.js'
 import { rounds } from '../src/shared/pet-engine.js'
 import { check } from '../scripts/check-lines.mjs'
 import { TPL } from '../src/core/lines.js'
@@ -51,36 +51,33 @@ test('子代理开的会话不算', () => {
   assert.deepEqual(dshTurns('s1', { origin: 'subagent' }, events), [])
 })
 
-test('挑时刻：干活、说好了却挨骂、认错，都带真数字和原话', () => {
+test('挑时刻：说好了却挨骂、认错，都带原话；光干了几分钟的流水账不说', () => {
   const { header, events } = dshSession()
   const ms = buildMoments(dshTurns('s1', header, events), { now: min(60) })
   const kinds = ms.map(m => m.kind)
-  const work = ms.find(m => m.kind === 'work')
-  assert.ok(work, kinds.join(','))
-  assert.match(work.text, /修登录页/)
-  assert.doesNotMatch(work.text, /「修登录页/)                 // 任务名不套引号
-  assert.match(work.text, /9 分钟|碗/)
+  assert.equal(ms.some(m => m.kind === 'work'), false, '8 分钟的活不值得翻')
   const caught = ms.find(m => m.kind === 'caught')
   assert.ok(caught, kinds.join(','))
-  assert.match(caught.text, /改好了，测试全过了/)
-  assert.match(caught.text, /还是报错？？/)
+  assert.match(caught.text, /「还是报错？？」/)
+  assert.match(caught.text, /今天下午/)                       // 近的事说「今天下午」，不报几月几日几点几分
   const sorry = ms.find(m => m.kind === 'sorry')
-  assert.match(sorry.text, /你说得对，是我漏了一个分支/)
+  assert.match(sorry.text, /「你说得对，是我漏了一个分支」/)
+  for (const m of ms) assert.ok(width(m.text) <= 60, m.text)
 })
 
-test('私事只看原话：模板里的「有感情了」不算感情，原话里的考试算成绩', () => {
+test('私事只看原话：模板里的字不算，原话里的考试算成绩', () => {
   const turns = dshTurns('s', { cwd: '/x/proj' }, [
     { type: 'user/message', time: min(0), data: { content: [{ type: 'text', text: '帮我整理考试成绩表' }], source: { kind: 'user' } } },
     ...Array.from({ length: 70 }, (_, i) => ({ type: 'tool/call', time: min(i + 1), data: { name: 'bash', arguments: '{}' } })),
   ])
   const ms = buildMoments(turns, { now: min(100) })
   const work = ms.find(m => m.kind === 'work')
+  assert.equal(work.event, 'long')
   assert.deepEqual(work.sensitive, ['成绩'])
-  const stat = ms.find(m => m.kind === 'stat' && /proj/.test(m.text))
-  assert.deepEqual(stat.sensitive, [])
+  for (const m of ms.filter(m => m.kind === 'stat')) assert.deepEqual(m.sensitive, [])
 })
 
-test('Claude Code：被打断后主人的下一句是「继续」不算喊停；喊停的原话要打码', () => {
+test('Claude Code：被打断后主人的下一句是「继续」不算喊停；喊停的原话带路径的不说', () => {
   const at = m => new Date(min(m)).toISOString()
   const line = o => JSON.stringify(o)
   const lines = [
@@ -96,25 +93,45 @@ test('Claude Code：被打断后主人的下一句是「继续」不算喊停；
   assert.equal(turns.length, 3)
   assert.equal(turns[0].interrupted, true)
   assert.equal(turns[0].commands, 4)
-  const stopped = buildMoments(turns, { now: min(60) }).filter(m => m.kind === 'stopped')
+  // 喊停的那句带路径：打码以后是〔路径〕，算行话，这件事不说
+  assert.equal(buildMoments(turns, { now: min(60) }).filter(m => m.kind === 'stopped').length, 0)
+  const clean = claudeTurns([...lines.slice(0, -1), line({ type: 'user', timestamp: at(11), message: { content: '先别动那个文件' } })], { key: 'g' })
+  const stopped = buildMoments(clean, { now: min(60) }).filter(m => m.kind === 'stopped')
   assert.equal(stopped.length, 1)
-  assert.match(stopped[0].text, /别动 〔路径〕 那个文件/)
+  assert.match(stopped[0].text, /「先别动那个文件」/)
 })
 
-test('800 条对话版模板全部过检查：必须的占位符各一次、填完没残留、引号不套娃、不超长', () => {
+test('模板全部过检查：标了情绪和态度、占位符都认得、「」里只有原话、填出来过标准', () => {
   for (const [k, r] of Object.entries(check())) {
     assert.deepEqual(r.bad, [], k)
     assert.equal(r.dup, 0, k)
-    assert.ok(r.count >= 25, k)
+    assert.ok(r.count >= 2, k)
   }
+  assert.ok(Object.values(TPL).flat().length >= 100)
 })
 
-test('按类型挑模板：缺值的跳过，太长换下一条，都不行就不说', () => {
-  const out = say('complain', 'x', { w: '10 月 3 日中午' }, { said: '你到底行不行' })
+test('按事件挑模板：缺值的跳过，填出来超 60 字或有行话的换下一条，都不行就不说', () => {
+  const out = say('complain', 'x', { t: '昨天下午', said: '你到底行不行' })
   assert.match(out, /「你到底行不行」/)
-  assert.match(out, /10 月 3 日中午/)            // 模板没写时间的，前面补上
-  assert.equal(say('complain', 'x', { w: '10 月 3 日中午', about: '合并页' }, { said: '你到底行不行' }).includes('合并页那会儿'), true)
-  assert.equal(say('complain', 'x', {}, { said: '长'.repeat(130) }), null)
+  assert.match(out, /昨天下午/)
+  assert.ok(width(out) <= 60)
+  assert.equal(say('complain', 'x', { t: '昨天下午' }), null)                                   // 没有原话
+  assert.equal(say('complain', 'x', { t: '昨天下午', said: '长'.repeat(60) }), null)            // 塞不下
+  assert.equal(say('complain', 'x', { t: '昨天下午', said: '先 commit 再说' }), null)           // 原话里有行话，不能改，只能不说
+  assert.match(say('complain', 'x', { t: '上个月弄 my-app 那阵', place: 'my-app', said: '还是不行' }, { t: '上个月', said: '还是不行' }), /my-app/)   // 几版说法依次试
+  assert.equal(say('complain', 'x', { t: '10 月 3 日', said: '还是不行' }), null)                // 时间只说相对的：几月几日的不说
+})
+
+test('什么时候：近的口语，远的说几月几日；凌晨带钟点', () => {
+  const now = new Date(2026, 10, 19, 15, 0).getTime()                 // 周四
+  const at = (mo, d, h, mi = 0) => new Date(2026, mo - 1, d, h, mi).getTime()
+  assert.equal(timeWord(at(11, 19, 10), now), '今天上午')
+  assert.equal(timeWord(at(11, 18, 20), now), '昨天晚上')
+  assert.equal(timeWord(at(11, 16, 14), now), '这周一下午')
+  assert.equal(timeWord(at(11, 11, 21), now), '上周三晚上')
+  assert.equal(timeWord(at(10, 30, 7), now), '10 月 30 日早上')
+  assert.equal(timeWord(at(10, 30, 7), now, { part: false }), '10 月 30 日')
+  assert.equal(timeWord(at(9, 20, 1, 20), now, { clock: true }), '9 月 20 日凌晨 1:20')
 })
 
 test('气泡：一轮一行，去掉「本肥鱼：」「主人：」，主人的话单独标出来', () => {
@@ -239,4 +256,106 @@ test('拖她的话：拎起 30、拎久 20、甩 20、落地 30；扣着刚才�
     }
   }
   for (const g of Object.values(LINES.rateReply)) { assert.equal(g.up.length, 15); assert.equal(g.down.length, 15) }
+})
+
+test('原话过滤在进事件卡之前：半截指令只留看得懂的前半句，留不下就不引；事件卡只带过了滤的那句', () => {
+  const mk = (next, key) => dshTurns(key, { cwd: '/x/p' }, [
+    { type: 'user/message', time: min(0), data: { content: [{ type: 'text', text: '帮我把按钮改成蓝色' }], source: { kind: 'user' } } },
+    { type: 'assistant/message', time: min(2), data: { message: { content: [{ type: 'text', text: '我已经改成蓝色了，刷新就能看到。' }] } } },
+    { type: 'turn/end', time: min(2), data: { reason: { kind: 'completed' } } },
+    { type: 'user/message', time: min(5), data: { content: [{ type: 'text', text: next }], source: { kind: 'user' } } },
+  ])
+  const caught = (next, key) => buildMoments(mk(next, key), { now: min(60) }).find(m => m.kind === 'caught')
+  assert.equal(caught('不行 你现在不能纯卡', 'a').card.next, '不行')                    // 后半句是冲着当时那件活说的，只留前半句
+  assert.match(caught('不行 你现在不能纯卡', 'a').card.fact, /主人回了一句「不行」$/)
+  assert.doesNotMatch(caught('不行 你现在不能纯卡', 'a').text, /纯卡/)
+  assert.equal(caught('？？？我看不是网络又断了下', 'b'), undefined)                    // 前半句自己站不住：这件事不说
+  assert.equal(caught('还是不行，跑 3 次都 timeout', 'c').card.next, '还是不行')        // 数字、英文的那半句不引
+  assert.equal(caught('额？？？？ 太慢了吧 我要你2分钟搞定', 'd').card.next, '额？？？？ 太慢了吧')   // 留下的那段一个字符都不动（空格也在）
+  assert.equal(caught('大哥 我目前刷新我也看不到啊', 'e').card.next, '大哥 我目前刷新我也看不到啊')
+})
+
+test('动作：每张要用的立绘和特效图都在包里；事件默认动作、模型能挑的动作，桌宠都演得出来', async () => {
+  const fs = await import('node:fs')
+  const { FIGURES, EXPR, POSE_FALLBACK, FX_OF, SEQ } = await import('../src/shared/pet-engine.js')
+  const { EVENT_ANIM, ANIM_OF, TPL } = await import('../src/core/lines.js')
+  const { ACTIONS } = await import('../src/core/style.js')
+  for (const n of FIGURES) assert.ok(fs.existsSync(new URL(`../assets/xiaobenben/${n}.png`, import.meta.url)), n)
+  for (const [k, anim] of [...Object.entries(EVENT_ANIM), ...Object.entries(ANIM_OF), ...Object.entries(ACTIONS)]) assert.ok(EXPR[anim], `${k} → ${anim}`)
+  for (const ev of Object.keys(EVENT_ANIM)) assert.ok(TPL[ev], ev)
+  for (const frame of [...Object.keys(FX_OF), ...Object.values(SEQ).flat()]) assert.ok(FIGURES.includes(frame), frame)
+  for (const [pose, fallback] of Object.entries(POSE_FALLBACK)) assert.ok(FIGURES.includes(pose) && FIGURES.includes(fallback), pose)
+  assert.equal(Object.keys(ACTIONS).length, 20)
+})
+
+test('情绪：每种事件有情绪；情绪定了能做的动作和回话按钮；动作对不上就换默认的；碎碎念的鼓脸不演成生气', async () => {
+  const { EMOTIONS, fitAnim } = await import('../src/shared/emotion.js')
+  const { EMOTION_OF, EVENT_ANIM, ANIM_OF, KIND_OF, TPL } = await import('../src/core/lines.js')
+  const { EXPR, FX_OF, FX_SVG } = await import('../src/shared/pet-engine.js')
+  const { MOOD_ANIM, CHAT } = await import('../src/shared/chat.js')
+  for (const ev of Object.keys(TPL)) assert.ok(EMOTIONS[EMOTION_OF[ev]], `${ev} 没有情绪`)
+  for (const [name, e] of Object.entries(EMOTIONS)) {
+    assert.ok(e.anims.includes(e.def), name)
+    for (const a of e.anims) assert.ok(EXPR[a], `${name} → ${a}`)
+    assert.ok(e.buttons.length >= 2 && e.buttons.length <= 3, name)
+    for (const [label, replies, anim, mood] of e.buttons) {
+      assert.ok([...label].length <= 8, label); assert.ok(replies.length >= 3 && replies.every(r => [...r].length <= 40), label)
+      assert.ok(EXPR[anim] && CHAT[mood], label)
+    }
+  }
+  // 事件的默认动作都在它那种情绪允许的范围里
+  for (const ev of Object.keys(TPL)) { const a = EVENT_ANIM[ev] || ANIM_OF[KIND_OF[ev] || 'stat']; assert.ok(EXPR[fitAnim(EMOTION_OF[ev], a)], ev) }
+  assert.equal(fitAnim('sorry', 'proud'), 'bow')                  // 认错不能配得意
+  assert.equal(fitAnim('sorry', 'bury'), 'bury')
+  assert.equal(fitAnim('coax', 'angry'), 'coax')                  // 撒娇不能配生气
+  assert.equal(fitAnim('brag', null), 'proud')
+  for (const e of ['coax', 'sorry', 'brag', 'caught', 'scold', 'night', 'miss', 'tally', 'eat', 'halt']) assert.ok(!EMOTIONS[e].anims.includes('angry'), e)
+  assert.notEqual(MOOD_ANIM.pout, 'angry')
+  assert.ok(![].concat(EXPR.pouty, EXPR.coax).some(f => FX_OF[f] === 'anger'))     // 鼓脸、撒娇的图不挂怒气
+  for (const f of Object.values(FX_OF)) assert.ok(FX_SVG[f]?.startsWith('<svg'), f)
+  assert.deepEqual(EMOTIONS.sorry.buttons.map(b => b[0]).slice(0, 2), ['原谅你了', '还敢？'])
+  assert.deepEqual(EMOTIONS.coax.buttons.map(b => b[0]), ['陪你玩', '给你买零食', '等会儿嘛'])
+  assert.deepEqual(EMOTIONS.scold.buttons.map(b => b[0]), ['吓到你了？', '下次多打几个字', '没事啦'])       // 挨骂有自己的一组，不借抓包的
+  assert.notDeepEqual(EMOTIONS.scold.buttons, EMOTIONS.caught.buttons)
+})
+
+test('情绪有转折的台词动作跟着转；夸主人的台词换一组按钮；被喊停的说法跟着时长变', async () => {
+  const { TURN, turnAt, praisesOwner, replyEmotion, EMOTIONS } = await import('../src/shared/emotion.js')
+  const { EXPR } = await import('../src/shared/pet-engine.js')
+  for (const a of Object.values(TURN)) assert.ok(EXPR[a], a)
+  const t = '那天本肥鱼一天认错 3 回……活最后也干完了嘛，嘿嘿。'
+  assert.equal(t.slice(turnAt(t)), '活最后也干完了嘛，嘿嘿。')             // 说到落点才转
+  assert.equal(turnAt('主人，本肥鱼错了。'), -1)                            // 只有一小句：不转
+  const { realTurn } = await import('../src/shared/emotion.js')
+  assert.equal(realTurn('主人说了 90 回不对。本肥鱼认了 59 回'), false)      // 有落点，但情绪没转：姿势不换
+  assert.equal(realTurn('主人，本肥鱼说过「我理解错了」。\n呜，不是故意的，下次先想清楚再动手。'), true)
+  assert.equal(TURN.sorry, 'headpat')
+  assert.ok(praisesOwner('56 天，主人全给了 getAudio。都是你一点点磨出来的呀，本肥鱼作证。'))
+  assert.ok(!praisesOwner('主人一句话，本肥鱼闷头干了 42 分钟。夸一句不过分吧？'))
+  assert.equal(replyEmotion({ emotion: 'brag', text: '它能有今天，主人功劳最大啦～' }), 'thanks')
+  assert.deepEqual(EMOTIONS.thanks.buttons.map(b => b[0]), ['你也辛苦了', '还好有你'])
+  // 被喊停：十分钟以内「才干了…」，半小时以上「干了好久 / 干了…就停了」
+  const mk = (mins, key) => dshTurns(key, { cwd: '/x/p' }, [
+    { type: 'user/message', time: min(0), data: { content: [{ type: 'text', text: '把注册页也照这个改一下' }], source: { kind: 'user' } } },
+    ...Array.from({ length: mins }, (_, i) => ({ type: 'tool/call', time: min(i + 1), data: { name: 'bash', arguments: '{}' } })),
+    { type: 'turn/end', time: min(mins + 0.2), data: { reason: { kind: 'interrupted' } } },
+    { type: 'user/message', time: min(mins + 1), data: { content: [{ type: 'text', text: '算了先停一下' }], source: { kind: 'user' } } },
+  ])
+  const stop = (mins, key) => buildMoments(mk(mins, key), { now: min(600) }).find(m => m.kind === 'stopped')
+  assert.match(stop(4, 'a').text, /才干了 4 分钟/)
+  assert.equal(stop(4, 'a').card.len, 'short')
+  assert.doesNotMatch(stop(45, 'b').text, /才干了/)
+  assert.match(stop(45, 'b').text, /干了 45 分钟/)
+  assert.equal(stop(45, 'b').card.len, 'long')
+  assert.match(stop(45, 'b').card.fact, /已经干了很久（45 分钟）/)
+})
+
+test('存反馈：别处翻过的事并进来，不被后存的那一份盖掉', async () => {
+  const { mergeShown } = await import('../src/shared/feedback.js')
+  const disk = { shown: { a: [2, 2000], b: [1, 500] }, lines: { 旧: 1 } }
+  const mine = { shown: { a: [1, 3000], c: [1, 100] }, lines: { 新: -1 } }
+  const out = mergeShown(mine, disk)
+  assert.deepEqual(out.shown, { a: [2, 3000], c: [1, 100], b: [1, 500] })
+  assert.deepEqual(out.lines, { 新: -1 })                    // 👍👎 还是以这一份为准（要能撤销）
+  assert.deepEqual(mergeShown(mine, null).shown, { a: [1, 3000], c: [1, 100] })
 })

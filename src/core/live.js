@@ -87,5 +87,5 @@ export function liveState({ recent = [], history = [], now = Date.now() }) {
     if (top && top.active >= 5 * 60e3) longest[b.key] = dur(top.active)
   }
 
-  return { at: now, clock: clock(now), busy, last, today: { n: today.length, dur: todayMs >= 60e3 ? dur(todayMs) : null }, complain, night, longest }
+  return { at: now, clock: clock(now), busy, lastAt: turns.reduce((a, t) => Math.max(a, t.start), 0), last, today: { n: today.length, dur: todayMs >= 60e3 ? dur(todayMs) : null }, complain, night, longest }
 }

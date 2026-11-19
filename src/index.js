@@ -12,8 +12,10 @@ import { Store } from './store.js'
 import { dshAdapter } from './llm-adapter.js'
 import { Pet } from './pet.js'
 import { Desktop } from './desktop.js'
-import { normFeedback, feedbackJson } from './shared/feedback.js'
+import { normFeedback, feedbackJson, mergeShown } from './shared/feedback.js'
 import { Styler } from './styler.js'
+import { Auto } from './auto.js'
+import { listPrices } from './core/prices.js'
 
 export const name = 'dsh-xiaobenben'
 export const inject = ['sessionQuery', 'connection', 'llm', 'agentDefaultModel']
@@ -30,6 +32,10 @@ export const Config = Schema.object({
   expensiveOutputPrice: Schema.number().default(0).description('输出价格（每百万 token）高于这个数就提示「可以换便宜的模型」；0 = 不提示'),
   electronPath: Schema.string().default('').description('大肥鱼桌面版用的 Electron.app 路径；空 = 自动找本机已有的，没有就下载'),
   electronMirror: Schema.string().default('').description('下载 Electron 用的镜像；空 = https://npmmirror.com/mirrors/electron/'),
+  autoRunTokens: Schema.number().default(60000).description('台词自动补货：每次最多用多少 token（主人开了自动更新才有用；只用来防 bug）'),
+  autoMonthYuan: Schema.number().default(5).description('台词自动补货：每个月最多花多少钱（元。prices 里有这个模型就按 prices 算；没有就按内置的 DeepSeek 官方价，2026-11-19 查，分空闲 / 高峰）'),
+  holidays: Schema.array(Schema.string()).default([]).description('法定节假日（北京时间的日期，例 2026-10-01）：这些天全天算空闲时段。每年的放假安排没有内置，要算准就自己填'),
+  workdays: Schema.array(Schema.string()).default([]).description('调休要上班的周末（例 2026-10-10）：这些天按工作日算高峰'),
   sensitiveExtra: Schema.dict(Schema.array(Schema.string())).default({}).description('额外的敏感词，按类：{ 健康: [...], 感情: [...], 成绩: [...], 家庭: [...] }'),
 })
 
@@ -56,13 +62,27 @@ export function apply(ctx, config = {}) {
   desktop.resume()
   pet.moments().catch(err => console.warn('[dsh-xiaobenben] 预先翻记录失败', err))   // 启动就先翻好，第一次点不用等
   const adapter = dshAdapter(ctx.llm)
-  const styler = new Styler({ pet, store, adapter, prices: config.prices || [] })
+  // 写台词用思考强度最低的那一档：气泡里的一两句话用不着长考，默认的高强度思考会把输出额度吃光
+  const quick = dshAdapter(ctx.llm, { quick: true })
+  const calendar = { holidays: config.holidays || [], workdays: config.workdays || [] }
+  // 报价用的价格：配置里有就用配置的，没有就用内置的官方默认价（按此刻是空闲还是高峰）
+  const styler = new Styler({ pet, store, adapter: quick, prices: route => listPrices(route || currentRoute(), config.prices || [], Date.now(), calendar) })
   let running = null                          // 同一时间只跑一个生成，不排队、不并发
 
   const currentRoute = () => {
     const s = ctx.agentDefaultModel.currentSelection()
     return { provider: s.provider, model: s.model }
   }
+
+  // 台词自动补货（主人选了才开）：dsh web 开着的时候每 5 分钟看一眼库存，不到 20 条、主人又闲着才补。见 src/auto.js
+  const auto = new Auto({
+    pet, store, adapter: quick, route: currentRoute, isRunning: () => !!styler.job,
+    prices: config.prices || [], calendar, caps: { run: config.autoRunTokens, monthYuan: config.autoMonthYuan },
+    activity: async () => { const n = await pet.now(); return { busy: (n.busy || []).length > 0, lastAt: n.lastAt || 0 } },
+  })
+  const autoTimer = setInterval(() => auto.tick().catch(err => console.warn('[dsh-xiaobenben] 自动更新出错', err)), 5 * 60e3)
+  autoTimer.unref?.()
+  try { ctx.on?.('dispose', () => clearInterval(autoTimer)) } catch {}
 
   const routes = {
     async sources() {
@@ -98,7 +118,8 @@ export function apply(ctx, config = {}) {
       try { return await running } finally { running = null }
     },
     async moments(body) {
-      return pet.moments({ fresh: !!body.fresh })
+      // news：自动更新新写了几件事。带在这一次里交给挂件（她下次被点时说一句），交出去就清零
+      return { ...(await pet.moments({ fresh: !!body.fresh })), news: auto.takeNews() }
     },
     async now() {
       return pet.now()
@@ -111,7 +132,21 @@ export function apply(ctx, config = {}) {
       return styler.start({ route: body.route || currentRoute(), hash: body.hash, redo: !!body.redo })
     },
     async 'style.status'() {
-      return styler.status()
+      return { ...(await styler.status()), auto: await auto.status() }
+    },
+    // 自动补货：开 / 关、要不要避开高峰（带 now：第一次选「自动更新」那一下先补一批）、暂停后继续
+    async 'auto.set'(body) {
+      auto.set({ on: typeof body.on === 'boolean' ? body.on : undefined, avoidPeak: typeof body.avoidPeak === 'boolean' ? body.avoidPeak : undefined })
+      if (body.on === true) styler.answer('yes')
+      if (body.on === true && body.now === true && !styler.job) auto.run().catch(err => console.warn('[dsh-xiaobenben] 自动补货出错', err))
+      return auto.status()
+    },
+    async 'auto.resume'() {
+      return auto.resume()
+    },
+    // 第一次打开时问的那一句「让本肥鱼用你的模型写一批台词？」，主人答了什么
+    async 'style.answer'(body) {
+      return styler.answer(body.answer)
     },
     async 'style.stop'() {
       return styler.stop()
@@ -122,7 +157,13 @@ export function apply(ctx, config = {}) {
     // 主人的反馈（👍👎、点过的按钮）：和桌面那只共用 feedback.json
     async feedback(body) {
       const file = path.join(path.dirname(store.file), 'feedback.json')
-      if (body.fb) { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, feedbackJson(body.fb)); return { ok: true } }
+      if (body.fb) {
+        let onDisk = null
+        try { onDisk = JSON.parse(fs.readFileSync(file, 'utf8')) } catch {}
+        fs.mkdirSync(path.dirname(file), { recursive: true })
+        fs.writeFileSync(file, feedbackJson(mergeShown(body.fb, onDisk)))      // 别处翻过的事别被这一份盖掉
+        return { ok: true }
+      }
       try { return { fb: normFeedback(JSON.parse(fs.readFileSync(file, 'utf8'))) } } catch (err) { if (err.code !== 'ENOENT') console.warn('[dsh-xiaobenben] 读反馈失败', err.message); return { fb: null } }
     },
     async desktop(body) {

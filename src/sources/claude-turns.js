@@ -32,11 +32,40 @@ export async function loadClaudeTurns({ root = SOURCE_PATHS.claude, since = 0 } 
         if (/"entrypoint":"sdk/.test(head)) { skipped++; continue }
         const text = await fs.readFile(file, 'utf8')
         const t = claudeTurns(text.split('\n'), { key: file, home: os.homedir() })
-        if (t.length) { sessions++; turns.push(...t) }
+        if (t.length) { sessions++; turns.push(...await resolveProjects(t)) }
       } catch (err) {
         console.warn('[dsh-xiaobenben] 读 Claude Code 记录失败', file, err?.message)
       }
     }
   }
+  markLoose(turns)
   return { turns, sessions, skipped }
+}
+
+/** 哪个工作目录底下认出过项目，它就是个装项目的大文件夹：在它里面、没认出是哪个项目的那些轮，文件夹名说不出是哪件事（t.loose） */
+export function markLoose(turns) {
+  const own = t => t.cwd && t.project === t.cwd.split('/').pop()
+  const containers = new Set(turns.filter(t => t.cwd && t.project && !own(t) && t.project !== '主目录').map(t => t.cwd))
+  for (const t of turns) if (containers.has(t.cwd) && own(t)) t.loose = true
+  return turns
+}
+
+const MARKERS = ['.git', 'package.json', 'pyproject.toml', 'Cargo.toml', 'go.mod', 'README.md']
+const isProject = new Map()
+/**
+ * 工作目录是个装了很多项目的大文件夹时（在 ~/code 里开的会话，改的是 ~/code/my-app/…），「哪个项目」算子文件夹：
+ * 子文件夹里有 .git / package.json / README 之类才算。一个会话里没改文件的轮，沿用前面认出来的那个。
+ */
+export async function resolveProjects(turns, exists = p => fs.access(p).then(() => true, () => false)) {
+  let last = null
+  for (const t of turns) {
+    const top = Object.entries(t.subs || {}).sort((a, b) => b[1] - a[1])[0]?.[0]
+    if (top && t.cwd) {
+      const dir = path.join(t.cwd, top)
+      if (!isProject.has(dir)) isProject.set(dir, (await Promise.all(MARKERS.map(m => exists(path.join(dir, m))))).some(Boolean))
+      if (isProject.get(dir)) last = { cwd: t.cwd, name: top }
+    }
+    if (last && last.cwd === t.cwd) t.project = last.name
+  }
+  return turns
 }
