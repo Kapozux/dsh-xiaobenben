@@ -10,7 +10,7 @@
  * 占位符：
  *   {t}       什么时候，相对的说法，程序拼（「昨天下午」「上周三晚上」「上个月弄 my-app 那阵」「三个月前有一天凌晨 2:41」）。一周以外的事带上在弄什么
  *   {said}    一句原话（谁说的看事件）  {next} 主人回的那句  {claim} 本肥鱼当时说的那句
- *   {n} {m} {k} 次数  {w} 几个星期  {dur} 时长  {rice} 几碗（带单位，「11 大碗」）  {clock} 钟点
+ *   {n} {m} {k} 次数  {w} 几个星期  {dur} 时长（被喊停：{few} 十分钟以内的时长，{long} 半小时以上的时长）  {rice} 几碗（带单位，「11 大碗」）  {clock} 钟点
  *   {project} 项目文件夹名  {days} 天数  {rel} 多久以前（「上个月」）  {relday}（「上个月有一天」）  {span} 总账看的天数
  * 不许在模板里写带「」的话：引号里只能是占位符填进来的原话。
  */
@@ -30,7 +30,7 @@ export const TPL = {
   complain: [
     L('{t}主人说「{said}」，本肥鱼一声都没敢吭呀。现在可以吭了吗？嘿嘿。', '笑', '心虚'),
     L('主人，{t}你说「{said}」。那会儿你是真急了，本肥鱼懂的嘛。', '被懂', '心虚'),
-    L('「{said}」。\n主人，{t}你说的这句，本肥鱼不用翻本子都背得出来哦。', '笑', '自嘲'),
+    L('「{said}」。\n主人{t}说的，本肥鱼背得出来哦。', '笑', '自嘲'),
     L('{t}主人一句「{said}」……呜，换谁都会急的，不怪主人。', '被懂', '心虚'),
     L('{t}主人说「{said}」，说完还接着用本肥鱼。谢谢主人没换鱼呀～', '被懂', '撒娇'),
   ],
@@ -43,7 +43,7 @@ export const TPL = {
   // 同一个会话里两小时内被说了三回以上
   streak: [
     L('{t}主人连着说了本肥鱼 {n} 回，最后一回是「{said}」。呜，本肥鱼都数着呢。', '笑', '心虚'),
-    L('主人还记得吗，{t}本肥鱼连错 {n} 回，你连说 {n} 回……\n谢谢主人没换鱼呀。', '被懂', '撒娇'),
+    L('{t}本肥鱼连错 {n} 回，主人连说 {n} 回……\n谢谢主人没换鱼呀。', '被懂', '撒娇'),
     L('{t}主人说了本肥鱼 {n} 回不对，一回都没摔键盘。主人脾气真好诶，嘿嘿～', '被懂', '撒娇'),
     L('{t}本肥鱼错了 {n} 回才弄对，主人就陪了 {n} 回。辛苦主人啦，下次少错几回嘛。', '被懂', '心虚'),
   ],
@@ -57,7 +57,7 @@ export const TPL = {
   sorry: [
     L('{t}本肥鱼跟主人说了句「{said}」。认得快吧？嘿嘿，夸一下嘛。', '笑', '邀功'),
     L('主人，{t}本肥鱼说过「{said}」。\n呜，不是故意的，下次先想清楚再动手。', '被懂', '心虚'),
-    L('「{said}」。\n{t}本肥鱼说的。主人没多骂，还让我接着改，谢谢主人呀。', '被懂', '撒娇'),
+    L('「{said}」。\n{t}本肥鱼说的，谢谢主人没多骂呀。', '被懂', '撒娇'),
     L('{t}本肥鱼跟主人认了个错：「{said}」。这句本肥鱼说得可溜啦，都是练出来的嘛。', '笑', '自嘲'),
   ],
   // 一天里认错三回以上
@@ -66,18 +66,22 @@ export const TPL = {
     L('主人还记得吗，{t}本肥鱼一天认错 {n} 回……活最后也干完了嘛，嘿嘿。', '笑', '自嘲'),
     L('{t}本肥鱼一天说了 {n} 回对不起。主人那天真能忍呀，这份情本肥鱼记着哦。', '被懂', '心虚'),
   ],
-  // 干到一半被主人按停，那句话离开当时也看得懂
+  // 干到一半被主人按停，那句话离开当时也看得懂。说法跟着干了多久变：{few} 十分钟以内，{long} 半小时以上，{dur} 中间的
   stopped: [
-    L('{t}本肥鱼才干了 {dur}，主人一句「{next}」……好嘛，听主人的。', '笑', '撒娇'),
-    L('主人，{t}你喊停说「{next}」，本肥鱼正干得起劲呢。哼，下次早点说嘛。', '笑', '撒娇'),
-    L('{t}主人说「{next}」，本肥鱼立刻就停了哦。那 {dur}白干也不心疼，真的啦。', '笑', '自嘲'),
-    L('{t}主人一句「{next}」。还好你喊得早呀，本肥鱼才跑偏 {dur}，嘿嘿。', '被懂', '自嘲'),
+    L('{t}本肥鱼才干了 {few}，主人一句「{next}」……好嘛，听主人的。', '笑', '撒娇'),
+    L('{t}主人说「{next}」，本肥鱼才干了 {few}就停啦。停得快吧？嘿嘿。', '笑', '邀功'),
+    L('主人，{t}你喊停说「{next}」，本肥鱼都干了 {dur}呢。哼，下次早点说嘛。', '笑', '撒娇'),
+    L('{t}主人一句「{next}」，本肥鱼干了 {dur}的活就先放下啦。听主人的嘛。', '被懂', '撒娇'),
+    L('{t}本肥鱼干了 {long}，主人一句「{next}」就停了……呜，好久的活呢。', '笑', '撒娇'),
+    L('主人，{t}本肥鱼闷头干了 {long}，你说「{next}」。好嘛，白干也听你的。', '笑', '自嘲'),
   ],
   // 被按停，但那句话离开当时看不懂：不引原话
   halt: [
-    L('{t}本肥鱼才干了 {dur}就被主人按停啦。急刹车诶，下次先打声招呼嘛～', '笑', '撒娇'),
-    L('主人，{t}本肥鱼干了 {dur}，你说停就停。\n好嘛，本肥鱼最听主人的话了。', '笑', '撒娇'),
-    L('{t}本肥鱼被主人叫停，前面 {dur}算白干。不心疼，真的，一点都不……呜。', '笑', '自嘲'),
+    L('{t}本肥鱼才干了 {few}就被主人按停啦。急刹车诶，下次先打声招呼嘛～', '笑', '撒娇'),
+    L('主人，{t}本肥鱼刚干了 {few}，你说停就停。好嘛，本肥鱼最听话了。', '笑', '撒娇'),
+    L('{t}本肥鱼干了 {dur}，被主人中途叫停。不心疼，真的，一点都不……呜。', '笑', '自嘲'),
+    L('{t}本肥鱼干了 {long}，主人一句话就停了……呜，干了好久的呢。', '笑', '撒娇'),
+    L('主人还记得吗，{t}本肥鱼干了好久，{long}，你一句话就按停啦。心疼一下嘛～', '笑', '撒娇'),
   ],
   // 凌晨 1:30 以后主人还在说话（{t} 带钟点）
   late: [
@@ -102,7 +106,7 @@ export const TPL = {
   // 主人只说了几个字，本肥鱼干了很久
   terse: [
     L('{t}主人只说了「{said}」，本肥鱼就干了 {dur}。话越短活越长呀，主人。', '笑', '邀功'),
-    L('「{said}」。\n主人，{t}就这几个字，换了本肥鱼 {dur}的嘿咻哦。', '笑', '邀功'),
+    L('「{said}」。\n主人这几个字，换了本肥鱼 {dur}的嘿咻哦。', '笑', '邀功'),
     L('{t}主人丢下一句「{said}」，本肥鱼捡起来干了 {dur}。字这么少，夸要多给嘛～', '笑', '撒娇'),
   ],
   // 一趟活吃了二十碗以上
@@ -142,7 +146,7 @@ export const TPL = {
     L('{project} 主人连着弄过 {n} 天诶。本肥鱼天天打卡，没请过假，记一功嘛。', '骄傲', '邀功'),
   ],
   stat_busiest: [
-    L('主人，{relday}咱俩干了 {dur}，是这 {span} 天里最累的一天。\n当时没喊累，现在补一声：累呀～', '笑', '撒娇'),
+    L('主人，最累的那天咱俩干了 {dur}。\n当时没喊累，现在补一声：累呀～', '笑', '撒娇'),
     L('这 {span} 天里最长的一天，主人陪本肥鱼干了 {dur}。你怎么撑下来的呀，本肥鱼佩服。', '被懂', '撒娇'),
     L('主人还记得最累的那天吗？{dur}诶。本肥鱼到现在都想讨一句辛苦了嘛。', '骄傲', '邀功'),
   ],
@@ -217,10 +221,12 @@ export const EMOTION_OF = { caught: 'caught', complain: 'scold', cuss: 'scold', 
   eater: 'eat', stat_rice: 'eat', stat_first: 'miss', stat_today: 'miss',
   stat_owe: 'tally', stat_passnag: 'tally', stat_caught: 'tally', stat_stops: 'tally', stat_cuss: 'tally', stat_short: 'tally' }
 /** 事件 → 演哪个动作（没写的按大类走 ANIM_OF）。台词里不写身体动作，动作在这儿配 */
-export const EVENT_ANIM = { stopped: 'halt', halt: 'halt', pass: 'wag', passafter: 'wag', eater: 'full', stat_rice: 'full', cuss: 'curl', streak: 'curl', marks: 'pause', sorryday: 'bury', stat_caught: 'close', stat_owe: 'peek', stat_passnag: 'peek', stat_project: 'proud', stat_streak: 'wag', stat_first: 'headpat', stat_today: 'headpat', stat_cuss: 'mutter', stat_stops: 'pause', stat_short: 'mutter', long: 'proud', terse: 'proud', late: 'yawn', night: 'yawn', stat_busiest: 'proud', stat_continue: 'proud', stat_asks: 'proud', stat_days: 'wag', stat_latest: 'yawn', stat_nights: 'yawn', stat_owl: 'yawn' }
+export const EVENT_ANIM = { stopped: 'halt', halt: 'halt', pass: 'wag', passafter: 'wag', eater: 'full', stat_rice: 'full', cuss: 'curl', streak: 'curl', marks: 'pause', sorryday: 'bury', stat_caught: 'close', stat_owe: 'peek', stat_passnag: 'peek', stat_project: 'proud', stat_streak: 'wag', stat_first: 'headpat', stat_today: 'headpat', sorry: 'curl', stat_cuss: 'mutter', stat_stops: 'pause', stat_short: 'mutter', long: 'proud', terse: 'proud', late: 'yawn', night: 'yawn', stat_busiest: 'proud', stat_continue: 'proud', stat_asks: 'proud', stat_days: 'wag', stat_latest: 'yawn', stat_nights: 'yawn', stat_owl: 'yawn' }
 export const ANIM_OF = { caught: 'caught', complain: 'sigh', sorry: 'bow', stopped: 'startle', late: 'yawn', work: 'work', stat: 'eat' }
 
 const q = (pre, v, post = '') => v ? `${pre}「${v}」${post}` : ''
+/** 被按停时干了多久，说法跟着时长变（c.len：short 十分钟以内 / long 半小时以上） */
+const HOW_LONG = c => c.len === 'short' ? `才刚干了 ${c.dur}` : c.len === 'long' ? `已经干了很久（${c.dur}）` : `干了 ${c.dur}`
 /** 什么时候（相对的说法）+ 当时在弄什么（括号里，模型只在认不出是哪件事时才用） */
 const W = c => `${c.rel || c.when}${c.task ? `（当时在弄 ${c.task}）` : ''}`
 /**
@@ -236,8 +242,8 @@ export const FACT = {
   marks: c => `${W(c)}，主人看完本肥鱼干的活，只回了 ${c.times} 个问号，一个字都没有`,
   sorry: c => `${W(c)}，本肥鱼做错了，跟主人认了错`,
   sorryday: c => `${W(c)}，本肥鱼一天之内跟主人认了 ${c.times} 回错`,
-  stopped: c => `${W(c)}，本肥鱼刚干了 ${c.dur}，主人喊停，说「${c.next}」`,
-  halt: c => `${W(c)}，本肥鱼干了 ${c.dur}，被主人中途按停了`,
+  stopped: c => `${W(c)}，本肥鱼${HOW_LONG(c)}，主人喊停，说「${c.next}」`,
+  halt: c => `${W(c)}，本肥鱼${HOW_LONG(c)}，被主人中途按停了`,
   late: c => `${W(c)}，主人还没睡，还在给本肥鱼派活${q('，说的是', c.said)}`,
   night: c => `${W(c)}，过了零点主人又给本肥鱼派了 ${c.times} 个活，最后一个在凌晨 ${c.clock}`,
   long: c => `${W(c)}，主人一句话，本肥鱼一口气干了 ${c.dur}${c.rice ? `，吃了 ${c.rice}` : ''}`,

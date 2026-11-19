@@ -504,7 +504,7 @@ export function buildMoments(turns, { since = 0, now = Date.now(), days = null, 
     if (Object.keys(quotes).length && !uniq.length) return []
     return tVars(tr, ts, now, o).flatMap(tv => (uniq.length ? uniq : [{}]).map(q => ({ ...base, ...tv, ...q })))
   }
-  const cardOf = v => v && { when: v.t && v.t.replace(/\u200b/g, '').trim(), time: v.time, rel: v.rel, task: v.place, said: v.said, next: v.next, claim: v.claim, dur: v.dur, rice: v.rice && v.rice + '白饭', times: v.n, clock: v.clock }
+  const cardOf = v => v && { when: v.t && v.t.replace(/\u200b/g, '').trim(), time: v.time, rel: v.rel, task: v.place, said: v.said, next: v.next, claim: v.claim, dur: v.dur || v.few || v.long, len: v.len, rice: v.rice && v.rice + '白饭', times: v.n, clock: v.clock }
   /** 挑一条说，顺手记下用的是哪版变量（事件卡里的事实要和台词里的一样） */
   const tell = (event, seed, vs) => { for (const v of vs) { const text = say(event, seed, v); if (text) return { text, v } } return {} }
 
@@ -557,7 +557,9 @@ export function buildMoments(turns, { since = 0, now = Date.now(), days = null, 
 
     // 被喊停：那句话离开当时也看得懂才引，否则只说被按停了
     if (tr.interrupted && tr.active >= 60e3 && isHuman(tr.next) && !FILLER.test(tr.next.trim()) && len(tr.next) >= 3 && len(tr.next) <= 40) {
-      const base = { dur: dur(tr.active) }
+      // 说法跟着干了多久变：十分钟以内「才干了…」，半小时以上「干了好久…」
+      const mins = tr.active / 60e3, len2 = mins < 10 ? 'short' : mins >= 30 ? 'long' : 'mid'
+      const base = { [len2 === 'short' ? 'few' : len2 === 'long' ? 'long' : 'dur']: dur(tr.active), len: len2 }
       const withQuote = tell('stopped', seed, variants(tr, tr.start, base, { next: tr.next }))
       if (withQuote.text) add('stopped', tr.start, withQuote.text, { turn: tr, src: tr.next, card: cardOf(withQuote.v) })
       else if (tr.active >= 5 * 60e3) { const { text, v } = tell('halt', seed, variants(tr, tr.start, base)); add('halt', tr.start, text, { turn: tr, src: 'halt' + tr.start, card: cardOf(v) }) }
@@ -703,7 +705,7 @@ export function buildMoments(turns, { since = 0, now = Date.now(), days = null, 
     const per = {}
     for (const t of ts) { const p = placeOf({ ...t, title: null, about: null }); if (p) per[p] = (per[p] || 0) + t.active }
     const top = Object.entries(per).sort((a, b) => b[1] - a[1])[0]
-    if (top && top[1] >= 60 * 60e3) stat('stat_today', d.getTime(), label, { t: label, project: top[0], dur: dur(top[1]) })
+    if (top && top[1] >= 3 * 3600e3) stat('stat_today', d.getTime(), label, { t: label, project: top[0], dur: dur(top[1]) })
   }
 
   // 同一天最多留两件（总账不算），先留有看头的

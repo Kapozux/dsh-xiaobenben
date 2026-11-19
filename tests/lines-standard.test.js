@@ -1,7 +1,7 @@
 // 台词标准（docs/lines-standard.md）里机器能查的：字数、轮数、引号套娃、行话黑名单、原话逐字、数字真实、私事不说。
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { checkLine, spaced, MAX } from '../scripts/lines-standard.mjs'
+import { checkLine, spaced, bubbleLines, MAX } from '../scripts/lines-standard.mjs'
 import { check, coverage } from '../scripts/check-lines.mjs'
 import { buildMoments, dshTurns } from '../src/core/moments.js'
 
@@ -13,12 +13,14 @@ test('检查器：合格的台词不报', () => {
   assert.deepEqual(rules(text, { sources: ['已经停掉旧的、重新启动，改好了。', '打不开啊'], card: {} }), [])
 })
 
-test('检查器：字数（不算空格和换行）、轮数', () => {
-  assert.deepEqual(rules('字'.repeat(MAX)), [])
-  assert.deepEqual(rules('字'.repeat(MAX + 1)), ['字数'])
-  assert.deepEqual(rules('字 '.repeat(MAX)), [])
+test('检查器：字数（不算空格和换行）、轮数、气泡里最多两行', () => {
+  assert.deepEqual(rules('字'.repeat(54)), [])                          // 一行 27 个字，两行 54
+  assert.deepEqual(rules('字'.repeat(55)), ['行数'])
+  assert.deepEqual(rules('字'.repeat(MAX + 1)), ['字数', '行数'])
   assert.deepEqual(rules('第一轮\n第二轮'), [])
   assert.deepEqual(rules('第一轮\n第二轮\n第三轮'), ['轮数'])
+  assert.deepEqual(rules('字'.repeat(28) + '\n第二行'), ['行数'])       // 自己换了行，第一行又折了一行：三行
+  assert.equal(bubbleLines('主人在 getAudio 里干了 22 分钟，本肥鱼记着呢～'), 1)   // 英文数字算半个字
 })
 
 test('检查器：引号套娃', () => {

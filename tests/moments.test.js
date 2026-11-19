@@ -315,4 +315,35 @@ test('情绪：每种事件有情绪；情绪定了能做的动作和回话按�
   for (const f of Object.values(FX_OF)) assert.ok(FX_SVG[f]?.startsWith('<svg'), f)
   assert.deepEqual(EMOTIONS.sorry.buttons.map(b => b[0]).slice(0, 2), ['原谅你了', '还敢？'])
   assert.deepEqual(EMOTIONS.coax.buttons.map(b => b[0]), ['陪你玩', '给你买零食', '等会儿嘛'])
+  assert.deepEqual(EMOTIONS.scold.buttons.map(b => b[0]), ['吓到你了？', '下次多打几个字', '没事啦'])       // 挨骂有自己的一组，不借抓包的
+  assert.notDeepEqual(EMOTIONS.scold.buttons, EMOTIONS.caught.buttons)
+})
+
+test('情绪有转折的台词动作跟着转；夸主人的台词换一组按钮；被喊停的说法跟着时长变', async () => {
+  const { TURN, turnAt, praisesOwner, replyEmotion, EMOTIONS } = await import('../src/shared/emotion.js')
+  const { EXPR } = await import('../src/shared/pet-engine.js')
+  for (const a of Object.values(TURN)) assert.ok(EXPR[a], a)
+  const t = '那天本肥鱼一天认错 3 回……活最后也干完了嘛，嘿嘿。'
+  assert.equal(t.slice(turnAt(t)), '活最后也干完了嘛，嘿嘿。')             // 说到落点才转
+  assert.equal(turnAt('主人，本肥鱼错了。'), -1)                            // 只有一小句：不转
+  assert.equal(turnAt('主人说了 90 回不对。本肥鱼认了 59 回'), -1)         // 最后一小句没有落点：不转
+  assert.equal(TURN.sorry, 'headpat')
+  assert.ok(praisesOwner('56 天，主人全给了 getAudio。都是你一点点磨出来的呀，本肥鱼作证。'))
+  assert.ok(!praisesOwner('主人一句话，本肥鱼闷头干了 42 分钟。夸一句不过分吧？'))
+  assert.equal(replyEmotion({ emotion: 'brag', text: '它能有今天，主人功劳最大啦～' }), 'thanks')
+  assert.deepEqual(EMOTIONS.thanks.buttons.map(b => b[0]), ['你也辛苦了', '还好有你'])
+  // 被喊停：十分钟以内「才干了…」，半小时以上「干了好久 / 干了…就停了」
+  const mk = (mins, key) => dshTurns(key, { cwd: '/x/p' }, [
+    { type: 'user/message', time: min(0), data: { content: [{ type: 'text', text: '把注册页也照这个改一下' }], source: { kind: 'user' } } },
+    ...Array.from({ length: mins }, (_, i) => ({ type: 'tool/call', time: min(i + 1), data: { name: 'bash', arguments: '{}' } })),
+    { type: 'turn/end', time: min(mins + 0.2), data: { reason: { kind: 'interrupted' } } },
+    { type: 'user/message', time: min(mins + 1), data: { content: [{ type: 'text', text: '算了先停一下' }], source: { kind: 'user' } } },
+  ])
+  const stop = (mins, key) => buildMoments(mk(mins, key), { now: min(600) }).find(m => m.kind === 'stopped')
+  assert.match(stop(4, 'a').text, /才干了 4 分钟/)
+  assert.equal(stop(4, 'a').card.len, 'short')
+  assert.doesNotMatch(stop(45, 'b').text, /才干了/)
+  assert.match(stop(45, 'b').text, /干了 45 分钟/)
+  assert.equal(stop(45, 'b').card.len, 'long')
+  assert.match(stop(45, 'b').card.fact, /已经干了很久（45 分钟）/)
 })

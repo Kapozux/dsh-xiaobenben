@@ -56,7 +56,36 @@ export const EMOTIONS = {
     ['管饱', ['主人最好啦！那本肥鱼要大碗的，嘿嘿。', '管饱这话，本肥鱼记在小本本上了哦。', '呜，有主人这句，本肥鱼干活都香嘛。'], 'full', 'eat'],
   ] },
 }
-EMOTIONS.scold = { ...EMOTIONS.caught, name: '挨骂', def: 'curl', anims: ['curl', 'bury', 'sigh', 'caught', 'pause', 'bow', 'close'] }     // 挨骂和抓包回同一组话
+// 挨骂
+EMOTIONS.scold = { name: '挨骂', def: 'curl', anims: ['curl', 'bury', 'sigh', 'caught', 'pause', 'bow', 'close'], buttons: [
+  ['吓到你了？', ['呜，有一点点……主人不凶的时候本肥鱼就不怕啦。', '吓到了嘛，本肥鱼胆子只有一粒米那么大哦。', '嘿嘿，现在不怕了，主人这不是来哄本肥鱼了嘛。'], 'peek', 'shy'],
+  ['下次多打几个字', ['好耶，主人说话算话哦，本肥鱼等着看一整句嘛。', '嗯嗯！多打几个字，本肥鱼就不用猜得那么辛苦啦。', '嘿嘿，那本肥鱼下次也少犯点错，咱俩扯平嘛。'], 'headpat', 'happy'],
+  ['没事啦', ['呜，主人真好……那本肥鱼可以不躲着了吗？', '没事就好！本肥鱼悄悄松了口气哦。', '嘿嘿，主人不生气了，本肥鱼这就接着干活嘛。'], 'peek', 'happy'],
+] }
+// 台词是在夸主人、谢主人的时候：按钮不该再让主人夸她
+EMOTIONS.thanks = { name: '夸主人', def: 'headpat', anims: ['headpat', 'wag', 'proud', 'peek', 'cheer'], buttons: [
+  ['你也辛苦了', ['呜，主人还记得本肥鱼辛苦……不累，一点都不累嘛。', '嘿嘿，陪主人干活不算辛苦，算福利哦。', '有主人这句，本肥鱼还能再干三百个活呀。'], 'wag', 'happy'],
+  ['还好有你', ['呜呜，这句本肥鱼要折角，再贴上小红花哦。', '嘿嘿，主人再说一遍嘛，本肥鱼没听够。', '那主人以后也不许换鱼哦，说好了嘛。'], 'headpat', 'proud'],
+] }
+
+/**
+ * 情绪有转折的台词，动作跟着转：开头用这件事的动作（认错先缩成一团），说到落点（「嘿嘿」「保证」「听主人的」这类）时换成这个。
+ * 没写的情绪不转。
+ */
+export const TURN = { sorry: 'headpat', caught: 'peek', scold: 'peek', halt: 'peek', tally: 'mutter', brag: 'wag', night: 'headpat', eat: 'headpat' }
+/** 落点从哪个字开始：最后一小句里有落点的词，就从那一小句开头转；整句只有一小句、或者最后一小句没有落点，就不转（返回 -1） */
+export function turnAt(text) {
+  const t = String(text)
+  const cuts = [...t.matchAll(/[。！？…\n]+/g)].map(m => m.index + m[0].length).filter(i => i < t.length - 1)
+  if (!cuts.length) return -1
+  const at = cuts.at(-1), last = t.slice(at)
+  return /嘿嘿|嘿咻|保证|好嘛|听主人|夸|谢谢|嘛|哦|呀|啦|～|吧/.test(last) ? at : -1
+}
+/** 这句是不是在夸主人、谢主人 */
+export const praisesOwner = text => /(主人|你).{0,10}(功劳|磨出来|真好|脾气真好|真能忍|撑下来|厉害)|谢谢主人|辛苦主人|佩服/.test(String(text).replace(/「[^」]*」/g, ''))
+/** 这句台词主人能回哪组按钮：夸主人的那种单独一组，别的按这件事的情绪 */
+export const replyEmotion = m => (praisesOwner(m.text) ? 'thanks' : m.emotion)
+
 
 /** 这种情绪下演这个动作行不行；不行（或者没给）就换成默认动作 */
 export function fitAnim(emotion, anim) {

@@ -9,7 +9,7 @@ import { checkLine, tally } from '../src/core/standard.js'
 export const MOODS = ['笑', '被懂', '骄傲', '怀念']
 export const TONES = ['心虚', '撒娇', '邀功', '自嘲']
 /** 典型值：时间说法取最常见的长度，原话取 6 个字 */
-export const TYPICAL = { t: '上周三晚上', said: '怎么还没好啊', next: '还是不行啊', claim: '改好了', n: 4, m: 12, k: 3, w: 7, dur: '26 分钟', rice: '11 大碗', clock: '1:02', project: 'my-app', days: 23, files: 41, rel: '上个月', relday: '上个月有一天', span: 120 }
+export const TYPICAL = { t: '上周三晚上', said: '怎么还没好啊', next: '还是不行啊', claim: '改好了', n: 4, m: 12, k: 3, w: 7, dur: '26 分钟', few: '3 分钟', long: '48 分钟', rice: '11 大碗', clock: '1:02', project: 'my-app', days: 23, files: 41, rel: '上个月', relday: '上个月有一天', span: 120 }
 /** 模板里允许直接写的带引号的话（确实是主人说过的，生成时有记录可对） */
 const FIXED_QUOTES = ['继续']
 

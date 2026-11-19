@@ -62,7 +62,7 @@ ${OWNER_EXAMPLE}
 4. 时间只说相对的：用卡片第一行开头那个说法（「昨天下午」「上周三晚上」「上个月」）或者「那天」「那晚」「那次」「那阵子」。不许写几月几日；不许换成别的相对说法（卡片说上个月，就不能写上周）；卡片上没有的时间段（凌晨、夜里、早上、下午……）不许加。
 5. 项目名：只在主人不靠它就认不出是哪件事的时候才用，一句最多出现一次。数字两边各空一格（「干了 22 分钟」）。「一个项目的总账」「连着好几天」「项目第一天」「往年今日」这几类必须带项目名。
 6. 不写旁白式的描写：不写任何身体动作——手、腿、脸、头、身子、肚子、尾巴、鳍在干什么，缩成一团、打滚、打嗝、趴着蹲着这些都不写，也不写括号里的动作（「（把头埋进鳍里）」）。括号只许用来标语气：「（小声）」。
-7. 最多两行（中间用一个换行），合起来不超过 ${MAX_WIDTH} 个字（标点算，空格不算）。30～50 字最好。
+7. 气泡里最多两行，一行约 27 个字（英文、数字算半个）：不换行的话整句不超过 50 个字；自己换一次行的话，每行不超过 26 个字。30～45 字最好，超了直接作废。
 8. 只有本肥鱼在说：不写「主人：」「本肥鱼：」这样的说话人标签，不用 emoji，不用「」以外的引号。每句里都要出现「主人」（或者「你」）——话是说给主人听的。
 9. 不用任务编号、文件路径、英文技术词（commit、PR、API、token 这类；token 说「白饭」）。对话里有这些也别抄进台词。
 10. 原话里打成 ×× 的脏话照抄。
@@ -190,7 +190,7 @@ export function checkLine(card, text) {
   const proj = card.project || card.task
   if (proj && tight(t).split(tight(proj)).length - 1 > 1) return '项目名出现了不止一次'
   if (card.project && NEED_PROJECT.has(card.event) && !tight(t).includes(tight(card.project))) return `这类事必须带项目名「${card.project}」`
-  const std = standard(t, { project: [card.task, card.project].filter(Boolean).join(' '), voice: false }).find(b => b.rule === '行话' || b.rule === '私事')
+  const std = standard(t, { project: [card.task, card.project].filter(Boolean).join(' '), voice: false }).find(b => b.rule === '行话' || b.rule === '私事' || b.rule === '行数')
   if (std) return `${std.rule}（${std.why}）`
   const spans = [...t.matchAll(/「([^」]*)」/g)].map(m => m[1])
   const own = ownQuotes(card).map(tight)

@@ -8,6 +8,11 @@ import { sensitiveCats } from './sensitive.js'
 
 export const MAX = 60
 export const MAX_ROUNDS = 2
+/** 气泡一行放得下多少个字（汉字和全角标点算 1，英文数字空格算 0.55）。和 pet-engine.js 里气泡的最大宽度是一对，改一个要改另一个 */
+export const LINE_UNITS = 27
+const units = s => [...s].reduce((a, ch) => a + (/[\x20-\x7e]/.test(ch) ? 0.55 : 1), 0)
+/** 这句话在气泡里占几行（自己换的行 + 太长折的行） */
+export const bubbleLines = text => String(text).split('\n').filter(l => l.trim()).reduce((a, l) => a + Math.max(1, Math.ceil(units(l) / LINE_UNITS)), 0)
 
 /** 英文技术词：出现在哪都算行话（原话里也算：原话不能改，所以这句原话不能用） */
 export const TECH_WORDS = ['commit', 'commits', 'merge', 'merged', 'PR', 'PRs', 'MR', 'push', 'pull', 'rebase', 'branch', 'repo', 'token', 'tokens', 'API', 'SDK', 'CLI', 'MCP', 'JSON', 'JSONL', 'YAML', 'config', 'deploy', 'build', 'debug', 'diff', 'prompt', 'subagent', 'hook', 'hooks', 'npm', 'pnpm', 'git', 'stash', 'lint', 'CI', 'regex', 'schema', 'endpoint', 'payload', 'runtime', 'stdout', 'stderr', 'localhost', 'README', 'TODO', 'WIP', 'LGTM', 'refactor', 'worktree', 'checkpoint', 'pipeline', 'frontend', 'backend', 'SQL', 'HTTP', 'URL', 'UUID', 'CSS', 'HTML', 'DOM']
@@ -47,6 +52,7 @@ export function checkLine(text, ctx = {}) {
 
   const n = text.split('\n').filter(l => l.trim()).length
   if (n > MAX_ROUNDS) add('轮数', `${n} 轮，超过 ${MAX_ROUNDS}`)
+  else if (bubbleLines(text) > MAX_ROUNDS) add('行数', `气泡里要占 ${bubbleLines(text)} 行，超过 ${MAX_ROUNDS} 行`)
 
   if (/「[^」]*「/.test(text) || quotesOf(text).some(q => INNER_QUOTE.test(q)) || /『[^』]*[「“"]|“[^”]*[「『"]/.test(text)) add('引号套娃', '引号里还有引号')
   if ((text.match(/「/g) || []).length !== (text.match(/」/g) || []).length) add('引号套娃', '「」不成对')
