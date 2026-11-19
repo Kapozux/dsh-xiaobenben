@@ -59,7 +59,9 @@ export function apply(ctx, config = {}) {
   desktop.resume()
   pet.moments().catch(err => console.warn('[dsh-xiaobenben] 预先翻记录失败', err))   // 启动就先翻好，第一次点不用等
   const adapter = dshAdapter(ctx.llm)
-  const styler = new Styler({ pet, store, adapter, prices: config.prices || [] })
+  // 写台词用思考强度最低的那一档：气泡里的一两句话用不着长考，默认的高强度思考会把输出额度吃光
+  const quick = dshAdapter(ctx.llm, { quick: true })
+  const styler = new Styler({ pet, store, adapter: quick, prices: config.prices || [] })
   let running = null                          // 同一时间只跑一个生成，不排队、不并发
 
   const currentRoute = () => {
@@ -69,7 +71,7 @@ export function apply(ctx, config = {}) {
 
   // 台词自动补货（主人选了才开）：dsh web 开着的时候每 5 分钟看一眼库存，不到 20 条、主人又闲着才补。见 src/auto.js
   const auto = new Auto({
-    pet, store, adapter, route: currentRoute, isRunning: () => !!styler.job,
+    pet, store, adapter: quick, route: currentRoute, isRunning: () => !!styler.job,
     prices: config.prices || [], caps: { run: config.autoRunTokens, monthYuan: config.autoMonthYuan },
     activity: async () => { const n = await pet.now(); return { busy: (n.busy || []).length > 0, lastAt: n.lastAt || 0 } },
   })
