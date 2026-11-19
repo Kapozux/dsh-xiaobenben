@@ -3,6 +3,7 @@ import { CHAT, MOOD_ANIM, ANIM_MOOD } from './chat.js'
 import { IDLE } from './idle.js'
 import { emptyFeedback, normFeedback, pickRated } from './feedback.js'
 import { LIVE } from './live-lines.js'
+import { EMOTIONS, fitAnim } from './emotion.js'
 /**
  * 大肥鱼引擎：不依赖 React，dsh 浮层（Pet.jsx）和桌面窗口（desktop/）共用一份。
  *
@@ -65,12 +66,29 @@ export const EXPR = {
   angry: ['sulk', 'accuse', 'pout'], proud: 'proud', land: 'land',
   // 台词里不写的身体动作，由这些来演（模型写台词时可以挑，见 core/style.js 的 ACTIONS；事件默认用哪个见 core/lines.js 的 EVENT_ANIM）
   curl: 'curl-1', bury: 'curl-2', wag: 'tail-1', halt: 'halt', full: 'full', headpat: 'headpat', mutter: 'mutter', close: 'close', pause: 'pause', peek: 'peek',
+  coax: ['headpat', 'peek'], pouty: ['mutter', 'pout'],      // 撒娇；鼓着脸嘀咕（不是生气）
 }
 /** 两帧来回切的动作：摇尾巴 */
 export const SEQ = { 'tail-1': ['tail-1', 'tail-2'] }
-/** 头顶的小特效（assets/xiaobenben/fx-*.png）：哪张图配哪个 */
-export const FX_OF = { hide: 'sweat', surprised: 'exclaim', spout: 'sparkle', proud: 'sparkle', 'tail-1': 'heart', headpat: 'heart', sleepy: 'zzz', pout: 'anger', accuse: 'anger', sulk: 'anger', mutter: 'dots', thinking: 'dots', full: 'burp', eat: 'note', wave: 'note', peek: 'note', 'curl-1': 'gloom', 'curl-2': 'gloom', close: 'sigh', pause: 'sweat', bow: 'sweat' }
-export const FX = [...new Set(Object.values(FX_OF))]
+/** 头顶的小特效：哪张图配哪个。跟着图走，所以和情绪一致（怒气只配背过身和翻本子质问，鼓脸不配） */
+export const FX_OF = { hide: 'sweat', surprised: 'exclaim', spout: 'sparkle', proud: 'sparkle', 'tail-1': 'heart', headpat: 'heart', sleepy: 'zzz', sleep: 'zzz', accuse: 'anger', sulk: 'anger', mutter: 'dots', thinking: 'question', full: 'burp', eat: 'note', wave: 'note', 'curl-1': 'gloom', 'curl-2': 'gloom', close: 'sigh', pause: 'sweat', bow: 'sweat', halt: 'exclaim' }
+/** 特效都是矢量画的（64×64 的画板，深藏青描边），放多大都不糊 */
+const INK = '#1c2452'
+const svg = body => `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="${INK}" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round">${body}</svg>`
+export const FX_SVG = {
+  sweat: svg('<path d="M32 6C24 20 15 30 15 41a17 17 0 0 0 34 0C49 30 40 20 32 6Z" fill="#5db7f5"/><path d="M24 38c0 5 3 9 7 10" stroke="#fff" stroke-width="3"/>'),
+  exclaim: svg('<path d="M32 6c5 0 8 3 7 8l-3 24c0 3-8 3-8 0L25 14c-1-5 2-8 7-8Z" fill="#ef5261"/><circle cx="32" cy="52" r="6" fill="#ef5261"/>'),
+  question: svg('<path d="M18 22c0-9 6-15 14-15s14 5 14 13c0 7-5 9-9 12-3 2-3 4-3 7h-8c0-6 1-9 6-13 3-2 5-3 5-6 0-3-2-5-5-5s-5 2-6 6Z" fill="#ef5261"/><circle cx="30" cy="54" r="5.5" fill="#ef5261"/>'),
+  sparkle: svg('<path d="M26 6c2 12 6 16 18 18-12 2-16 6-18 18-2-12-6-16-18-18 12-2 16-6 18-18Z" fill="#ffd257"/><path d="M48 36c1 6 3 8 9 9-6 1-8 3-9 9-1-6-3-8-9-9 6-1 8-3 9-9Z" fill="#ffd257" stroke-width="3"/>'),
+  heart: svg('<path d="M32 56C14 44 6 34 6 23a13 13 0 0 1 26-3 13 13 0 0 1 26 3c0 11-8 21-26 33Z" fill="#ff7fa8"/><path d="M15 22c0-4 3-7 6-7" stroke="#fff" stroke-width="3"/>'),
+  zzz: svg('<path d="M8 10h20L8 34h20" stroke="#6f7fe0" stroke-width="6"/><path d="M34 30h14L34 46h14" stroke="#6f7fe0" stroke-width="5"/><path d="M50 46h9l-9 11h9" stroke="#6f7fe0" stroke-width="4"/>'),
+  anger: svg('<g stroke="#ef5261" stroke-width="7"><path d="M14 24c7 0 10-3 10-10"/><path d="M50 24c-7 0-10-3-10-10"/><path d="M14 40c7 0 10 3 10 10"/><path d="M50 40c-7 0-10 3-10 10"/></g>'),
+  dots: svg('<path d="M8 28C8 16 19 9 32 9s24 7 24 19-11 19-24 19c-3 0-6 0-8-1L13 54l3-11c-5-4-8-9-8-15Z" fill="#fff"/><g fill="#4a5380" stroke="none"><circle cx="21" cy="28" r="3.5"/><circle cx="32" cy="28" r="3.5"/><circle cx="43" cy="28" r="3.5"/></g>'),
+  note: svg('<path d="M26 44V12l24-6v32" stroke-width="5" stroke="#ff7fa8"/><ellipse cx="19" cy="46" rx="9" ry="7" fill="#ff7fa8"/><ellipse cx="43" cy="40" rx="9" ry="7" fill="#ff7fa8"/>'),
+  burp: svg('<path d="M30 46c-7 0-11-4-11-9 0-4 3-7 7-8 0-6 5-10 11-10 5 0 9 3 10 8 5 0 9 4 9 9s-4 10-10 10Z" fill="#fff"/><path d="M5 30h9M4 40h11" stroke-width="3"/>'),
+  sigh: svg('<path d="M20 48c-8 0-13-5-13-11s5-10 11-10c1-8 8-13 16-13 9 0 15 6 16 14 5 1 8 5 8 10 0 6-5 10-11 10Z" fill="#fff"/><path d="M26 48l-8 9" stroke-width="3"/>'),
+  gloom: svg('<g stroke="#5a648f" stroke-width="5"><path d="M16 8v40"/><path d="M32 8v30"/><path d="M48 8v22"/></g>'),
+}
 /** 姿势图（不是单纯换脸）；没这张图时退回哪个表情 */
 export const POSE_FALLBACK = {
   write: 'thinking', count: 'eat', hide: 'shy', accuse: 'pout', spout: 'happy', bow: 'shy',
@@ -79,7 +97,7 @@ export const POSE_FALLBACK = {
 }
 export const POSES = Object.keys(POSE_FALLBACK)
 const LINGER = { short: 0.45, normal: 1, long: 1.7 }
-export const FIGURES = ['normal', 'blink', 'happy', 'sad', 'surprised', 'sleepy', 'shy', 'thinking', 'eat', 'pout', 'proud', ...POSES, 'head', 'walk-1', 'walk-2', 'walk-3', 'walk-4', 'flip-1', 'flip-2', 'flip-3', 'flip-4', 'flip-5', 'flip-6', ...FX.map(n => 'fx-' + n)]
+export const FIGURES = ['normal', 'blink', 'happy', 'sad', 'surprised', 'sleepy', 'shy', 'thinking', 'eat', 'pout', 'proud', ...POSES, 'head', 'walk-1', 'walk-2', 'walk-3', 'walk-4', 'flip-1', 'flip-2', 'flip-3', 'flip-4', 'flip-5', 'flip-6']
 
 /** 鼠标停在她身上时的提示。要短：在立绘宽度（最小 141px）里一行放得下 */
 export const HINT = '点我翻旧账 · 可以拖'
@@ -99,9 +117,12 @@ const CSS = `
 @keyframes fy-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 /* 表情：没有单独表情图时，用代码加漫画符号 + 身体动作 */
 .fy-fig { position: relative; width: 100%; height: 100%; transform-origin: 50% 100%; }
-.fy-fx { position: absolute; left: 66%; top: 1%; width: 21%; height: auto; pointer-events: none; opacity: 0; }
-.fy-fx.on { opacity: 1; animation: fy-pop .25s ease-out, fy-note 1.6s ease-in-out .25s infinite; }
-.fy-fx.low { top: 15%; }
+/* 头顶特效：头宽的五分之一左右，放在头的右上角外侧，不压脸和身体。弹出来，停一会儿，淡出 */
+.fy-fx { position: absolute; left: 76%; top: 11%; width: 13%; aspect-ratio: 1; pointer-events: none; opacity: 0; transform-origin: 50% 80%; }
+.fy-fx svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.fy-fx.on { animation: fy-fx 1.9s ease-out forwards; }
+.fy-fx.low { top: 25%; }
+@keyframes fy-fx { 0% { opacity: 0; transform: scale(.3); } 9% { opacity: 1; transform: scale(1.25); } 16% { transform: scale(.95); } 22% { transform: scale(1); } 80% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: translateY(-8%) scale(1); } }
 .fy-mark { position: absolute; left: 70%; top: 4%; font-weight: 700; font-size: 26px; line-height: 1; color: #2a241d; pointer-events: none; white-space: nowrap; opacity: 0; }
 .fy-e-happy .fy-mark, .fy-e-surprised .fy-mark, .fy-e-sleepy .fy-mark, .fy-e-shy .fy-mark, .fy-e-sad .fy-mark, .fy-e-thinking .fy-mark,
 .fy-e-eat .fy-mark, .fy-e-pout .fy-mark, .fy-e-proud .fy-mark { opacity: 1; }
@@ -236,7 +257,14 @@ export function createPet(host, opts) {
     if (srcs.normal) show(expr)
   })
   const mark = doc.createElement('div'); mark.className = 'fy-mark'
-  const fx = doc.createElement('img'); fx.className = 'fy-fx'; fx.alt = ''; fx.draggable = false
+  const fx = doc.createElement('div'); fx.className = 'fy-fx'
+  /** 在头顶弹一个特效（弹一下、停一两秒、淡出）。low：蹲着的姿势，头的位置低 */
+  function popFx(name, low = false) {
+    fx.className = 'fy-fx'
+    if (!FX_SVG[name]) return
+    fx.innerHTML = FX_SVG[name]; void fx.offsetWidth
+    fx.className = 'fy-fx on' + (low ? ' low' : '')
+  }
   fig.append(img, mark, fx); float.appendChild(fig); body.appendChild(float)
   const MARK = { happy: '♪', surprised: '！', sleepy: 'z', shy: '///', sad: '💧', thinking: '…', eat: '♪', pout: '💢', proud: '✦' }
   const srcs = {}                              // 名字 → 地址（null = 没这张图）
@@ -260,10 +288,9 @@ export function createPet(host, opts) {
     clearInterval(seqTimer)
     const seq = SEQ[expr]
     if (seq && seq.every(n => srcs[n])) { let k = 0; seqTimer = setInterval(() => show(seq[++k % seq.length]), 170) }
-    // 头顶小特效：有这张表情图、也有特效图才挂
-    const f = srcs[expr] && FX_OF[expr], fu = f && srcs['fx-' + f]
+    // 头顶小特效：跟着这张图走
     fx.className = 'fy-fx'
-    if (fu) { if (fx.getAttribute('src') !== fu) fx.src = fu; void fx.offsetWidth; fx.className = 'fy-fx on' + (expr.startsWith('curl') ? ' low' : '') }
+    if (srcs[expr] && FX_OF[expr]) popFx(FX_OF[expr], expr.startsWith('curl'))
     if (ms) exprTimer = setTimeout(() => setExpr('normal'), ms)
   }
   const playAnim = (anim, ms = 0) => {
@@ -556,7 +583,7 @@ export function createPet(host, opts) {
     const textEl = b.querySelector('.fy-text')
     const html = (k, s) => `<div${rs[k].who === 'master' ? ' class="fy-m"' : ''}>${paint(s)}</div>`
     // 先用全文撑出最终大小再定位，打字时气泡不抖
-    textEl.innerHTML = rs.map((r, k) => html(k, r.text)).join(''); b.style.width = Math.min(340, Math.max(line.react || line.chat || line.buttons ? 250 : 120, b.offsetWidth)) + 'px'
+    textEl.innerHTML = rs.map((r, k) => html(k, r.text)).join(''); b.style.width = Math.min(340, Math.max(line.react || line.chat || line.buttons || line.emo ? 250 : 120, b.offsetWidth)) + 'px'
     textEl.innerHTML = ''
     positionBubble()
     const t = talk = { i: 0, typed: '', full: false, timer: 0, line }
@@ -583,10 +610,11 @@ export function createPet(host, opts) {
       const isLast = t.i === parts.length - 1
       if (isLast && line.rate && !dragging) addRate(b, line.rate, line.text)
       if (isLast && line.buttons) addButtons(b, line.buttons)
+      if (isLast && line.emo && EMOTIONS[line.emo]) addEmo(b, line.emo)
       if (isLast && line.react) addReactions(b, line.react)
       else if (isLast && line.chat) addChat(b, line.chat)
       const k = LINGER[opts.prefs.get().linger] || 1           // 气泡停多久：短 0.45 / 默认 1 / 长 1.7
-      const read = k * Math.max(isLast ? (line.buttons ? 30000 : line.react || line.chat ? 9000 : line.rate ? 6000 : 3500) : 700, [...parts[t.i]].length * (isLast ? 110 : 40))
+      const read = k * Math.max(isLast ? (line.buttons ? 30000 : line.react || line.chat || line.emo ? 9000 : line.rate ? 6000 : 3500) : 700, [...parts[t.i]].length * (isLast ? 110 : 40))
       t.timer = setTimeout(() => { if (isLast) { hideBubble(); idle() } else { t.i++; startBeat() } }, read)
     }
     // 鼠标停在气泡上就别收（在犹豫点哪个反应）
@@ -618,13 +646,31 @@ export function createPet(host, opts) {
     b.appendChild(row)
     positionBubble()
   }
+  /** 这种情绪下主人能回的话：[按钮字, 提示, 点了干什么]。她回一句（动作跟着那句走），接着就是平常的闲聊 */
+  const emoButtons = emotion => EMOTIONS[emotion].buttons.map(([label, replies, anim, mood]) => [label, null, () => {
+    fb.clicks[label] = (fb.clicks[label] || 0) + 1; logFb('回话按钮', label, 1); saveFb()
+    say({ text: pick(replies), anim, chat: mood })
+  }])
+  /** 碎碎念、撒娇底下的按钮：这种情绪的两三个 + 「再翻一件」 */
+  function addEmo(b, emotion) {
+    const row = doc.createElement('div'); row.className = 'fy-react'
+    for (const [label, , fn] of [...emoButtons(emotion), ['再翻一件', null, () => poke()]]) {
+      const btn = doc.createElement('button'); btn.textContent = label
+      btn.addEventListener('pointerdown', e => e.stopPropagation())
+      btn.addEventListener('click', e => { e.stopPropagation(); fn() })
+      row.appendChild(btn)
+    }
+    b.appendChild(row)
+    positionBubble()
+  }
   /** 说完后底下那一排：👍 👎（记下来，以后这一类多说 / 少说）+ 一个这一类专属的反应（点了她接一句）+「再翻一件」。 */
   function addReactions(b, m) {
     const row = doc.createElement('div'); row.className = 'fy-react'
     const opts2 = [
       ['👍', '这种好玩', () => { vote(m, 1); say({ text: pick(REPLY.up), anim: 'proud', chat: 'proud' }) }],
       ['👎', '这种没意思', () => { vote(m, -1); say({ text: pick(REPLY.down), anim: 'sigh', chat: 'sad' }) }],
-      ...shuffle((REACT[m.kind] || REACT.work).filter(r => r.replies.length)).slice(0, 1).map(r => [r.label, null, () => say({ text: pick(r.replies), anim: r.anim, chat: ANIM_MOOD[r.anim] || 'happy' })]),
+      // 这件事是什么情绪，就给什么按钮（认错：原谅你了 / 还敢？；邀功：夸夸你 / 一般般吧……见 emotion.js）。老数据没标情绪的，按大类抽一个
+      ...(EMOTIONS[m.emotion] ? emoButtons(m.emotion) : shuffle((REACT[m.kind] || REACT.work).filter(r => r.replies.length)).slice(0, 1).map(r => [r.label, null, () => say({ text: pick(r.replies), anim: r.anim, chat: ANIM_MOOD[r.anim] || 'happy' })])),
       ['再翻一件', null, () => poke()],
     ]
     for (const [label, title, fn] of opts2) {
@@ -738,7 +784,7 @@ export function createPet(host, opts) {
     const idleOdds = pr0.mode === 'idle' ? 1 : (pr0.mode || 'all') === 'all' ? (typeof pr0.idleOdds === 'number' ? pr0.idleOdds : 0.25) : 0
     if (Math.random() < idleOdds) {
       const line = pickIdle()
-      if (line) return say({ text: line.text, tag: '碎碎念', anim: MOOD_ANIM[line.mood] || 'idle', chat: line.mood, rate: '碎碎念' })
+      if (line) return sayIdle(line)
     }
     const me = thinking = { nags: 0 }
     hideBubble()
@@ -775,6 +821,11 @@ export function createPet(host, opts) {
   }
 
 
+  /** 说一句碎碎念：是在跟主人撒娇，所以鼓脸（pout）、害羞这类心情都演成撒娇，不演成生气；底下给撒娇的那组按钮 */
+  function sayIdle(line) {
+    const anim = line.mood === 'pout' || line.mood === 'shy' ? 'coax' : fitAnim('coax', MOOD_ANIM[line.mood] || 'coax')
+    say({ text: line.text, tag: '碎碎念', anim, emo: 'coax', rate: '碎碎念' })
+  }
   /** 挑一句碎碎念：只要现在这个钟点能说的（没写 hours 的随时能说），最近说过的 60 句先不重复 */
   const idleSeen = []
   function pickIdle() {
@@ -947,7 +998,13 @@ export function createPet(host, opts) {
         if (!list.length) return say({ text: `「${KIND[a.kind] || a.kind}」这一类本肥鱼一件都没有。`, anim: 'sigh' })
         return sayMoment(list[Math.floor(Math.random() * list.length)])
       }
-      case 'idle': { const l = pickIdle(); if (l) say({ text: l.text, tag: '碎碎念', anim: MOOD_ANIM[l.mood] || 'idle', chat: l.mood, rate: '碎碎念' }); return }
+      case 'idle': { const l = a.match ? IDLE.find(x => x.text.includes(a.match)) : pickIdle(); if (l) sayIdle(l); return }
+      case 'fx': hideBubble(); setExpr('normal'); popFx(a.name, !!a.low); return Object.keys(FX_SVG)
+      case 'event': {            // 说一件指定事件 / 指定情绪的旧账（调试、截图用）
+        const d = data || await load()
+        const m = (d?.moments || []).find(m => (a.event ? m.event === a.event : m.emotion === a.emotion) && !m.sensitive.length)
+        return m ? (sayMoment(m), { event: m.event, emotion: m.emotion, anim: m.anim, text: m.text }) : null
+      }
       case 'flip': hideBubble(); if (flipStart()) setTimeout(() => { flipFound(); setTimeout(flipStop, 900) }, 1500); return
       case 'walk': return walk(a.dir || 0)
       case 'sulk': pokes = []; sulkUntil = Date.now() + 4000; vy = -900; squash(0.8, 1.2, 160); kick(); return say({ text: pick(REPLY.angry), anim: 'angry' })

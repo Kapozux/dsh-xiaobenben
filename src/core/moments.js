@@ -8,7 +8,8 @@
  *
  * 私事判断只看原话素材（不看模板，模板里的「有感情了」不算感情）。原话都过 redact 打码。
  */
-import { TPL, KIND_OF, ANIM_OF, EVENT_ANIM, FACT } from './lines.js'
+import { TPL, KIND_OF, ANIM_OF, EVENT_ANIM, EMOTION_OF, FACT } from './lines.js'
+import { fitAnim } from '../shared/emotion.js'
 import { checkLine } from './standard.js'
 import crypto from 'node:crypto'
 import { redact } from './redact.js'
@@ -491,7 +492,7 @@ export function buildMoments(turns, { since = 0, now = Date.now(), days = null, 
     if (FACT[event]) c.fact = FACT[event](c).replace(/\s+/g, ' ')          // 大白话描述：发给模型的就是这句（core/style.js）
     if (turn && kind !== 'stat') c.ctx = contextOf(turn)                   // 事发前后几句原文（打码、≤300 字），给模型找味道用
     const sensitive = [...new Set([...(turn ? priv.get(turn) || [] : []), ...sensitiveCats(text)])]
-    const m = { kind, event, ts, day: dayKey(ts), hour: new Date(ts).getHours(), text, anim: EVENT_ANIM[event] || ANIM_OF[kind], sensitive, card: c, tpl: say.last }
+    const m = { kind, event, ts, day: dayKey(ts), hour: new Date(ts).getHours(), text, emotion: EMOTION_OF[event] || null, anim: fitAnim(EMOTION_OF[event], EVENT_ANIM[event] || ANIM_OF[kind]), sensitive, card: c, tpl: say.last }
     if (withSource) m.source = sources || (turn ? [turn.text, turn.next, turn.title, ...turn.texts].filter(Boolean) : [])
     moments.push(m)
   }

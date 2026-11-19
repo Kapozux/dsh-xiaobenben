@@ -210,8 +210,14 @@ export const TPL = {
 /** 事件 → 界面上的大类（反应按钮、动作、设置里的开关都按大类走，见 pet-engine.js 的 KIND） */
 export const KIND_OF = { caught: 'caught', complain: 'complain', cuss: 'complain', streak: 'complain', marks: 'complain', sorry: 'sorry', sorryday: 'sorry', stopped: 'stopped', halt: 'stopped',
   late: 'late', night: 'late', long: 'work', terse: 'work', eater: 'work', pass: 'work', passafter: 'work' }
+/** 事件 → 情绪（src/shared/emotion.js）：决定能做哪些动作、主人能回哪些话 */
+export const EMOTION_OF = { caught: 'caught', complain: 'scold', cuss: 'scold', streak: 'scold', marks: 'scold', sorry: 'sorry', sorryday: 'sorry', stopped: 'halt', halt: 'halt',
+  late: 'night', night: 'night', stat_latest: 'night', stat_nights: 'night', stat_owl: 'night',
+  long: 'brag', terse: 'brag', pass: 'brag', passafter: 'brag', stat_project: 'brag', stat_streak: 'brag', stat_busiest: 'brag', stat_continue: 'brag', stat_asks: 'brag', stat_days: 'brag',
+  eater: 'eat', stat_rice: 'eat', stat_first: 'miss', stat_today: 'miss',
+  stat_owe: 'tally', stat_passnag: 'tally', stat_caught: 'tally', stat_stops: 'tally', stat_cuss: 'tally', stat_short: 'tally' }
 /** 事件 → 演哪个动作（没写的按大类走 ANIM_OF）。台词里不写身体动作，动作在这儿配 */
-export const EVENT_ANIM = { stopped: 'halt', halt: 'halt', pass: 'wag', passafter: 'wag', eater: 'full', stat_rice: 'full', cuss: 'curl', streak: 'curl', marks: 'pause', sorryday: 'bury', stat_caught: 'close', stat_owe: 'peek', stat_passnag: 'peek', stat_project: 'proud', stat_streak: 'wag', stat_first: 'headpat', stat_today: 'headpat', stat_cuss: 'mutter', stat_stops: 'halt', long: 'proud', terse: 'mutter' }
+export const EVENT_ANIM = { stopped: 'halt', halt: 'halt', pass: 'wag', passafter: 'wag', eater: 'full', stat_rice: 'full', cuss: 'curl', streak: 'curl', marks: 'pause', sorryday: 'bury', stat_caught: 'close', stat_owe: 'peek', stat_passnag: 'peek', stat_project: 'proud', stat_streak: 'wag', stat_first: 'headpat', stat_today: 'headpat', stat_cuss: 'mutter', stat_stops: 'pause', stat_short: 'mutter', long: 'proud', terse: 'proud', late: 'yawn', night: 'yawn', stat_busiest: 'proud', stat_continue: 'proud', stat_asks: 'proud', stat_days: 'wag', stat_latest: 'yawn', stat_nights: 'yawn', stat_owl: 'yawn' }
 export const ANIM_OF = { caught: 'caught', complain: 'sigh', sorry: 'bow', stopped: 'startle', late: 'yawn', work: 'work', stat: 'eat' }
 
 const q = (pre, v, post = '') => v ? `${pre}「${v}」${post}` : ''

@@ -12,6 +12,8 @@ import { estimateTokens, parseJson } from './ai.js'
 import { width, MAX_WIDTH } from './moments.js'
 import { checkLine as standard, voiceIssue, spaced } from './standard.js'
 import { PERSONA } from './persona.js'
+import { EMOTION_OF } from './lines.js'
+import { fitAnim } from '../shared/emotion.js'
 import { EXAMPLE_RULES, OWNER_EXAMPLE, EXAMPLES, exampleFor } from './persona-examples.js'
 
 export const BATCH = 10                  // 写：一次 10 件事（每件 5 版，输出不小）
@@ -243,8 +245,9 @@ export async function styleRun({ adapter, cards, route, signal, onProgress = () 
       let { system, prompt } = buildStylePrompt(batch)
       if (notes) prompt += `\n\n这几张上一遍写的都没过检查，原因如下，这次照着改：\n${batch.map(c => `id=${c.id}：${notes[c.id]}`).join('\n')}`
       const got = await ask(system, prompt, batch.length * 520 + 300, 'lines')
-      const norm = x => typeof x === 'string' ? { text: x, anim: null } : { text: x?.t ?? x?.text, anim: ACTIONS[x?.a] || null }
-      const byId = new Map((got || []).map(l => [String(l?.id), (Array.isArray(l?.texts) ? l.texts : l?.text ? [l.text] : []).map(norm)]))
+      // 模型挑的动作要和这件事的情绪对得上（认错不能配得意）：对不上就换成这种情绪的默认动作
+      const norm = (x, c) => typeof x === 'string' ? { text: x, anim: null } : { text: x?.t ?? x?.text, anim: ACTIONS[x?.a] ? fitAnim(EMOTION_OF[c?.event], ACTIONS[x.a]) : null }
+      const byId = new Map((got || []).map(l => [String(l?.id), (Array.isArray(l?.texts) ? l.texts : l?.text ? [l.text] : []).map(x => norm(x, batch.find(c => c.id === String(l?.id))))]))
       for (const c of batch) {
         const texts = byId.get(c.id) || []
         const why = [], ok = cand[c.id] || []

@@ -287,3 +287,32 @@ test('动作：每张要用的立绘和特效图都在包里；事件默认动�
   for (const [pose, fallback] of Object.entries(POSE_FALLBACK)) assert.ok(FIGURES.includes(pose) && FIGURES.includes(fallback), pose)
   assert.equal(Object.keys(ACTIONS).length, 20)
 })
+
+test('情绪：每种事件有情绪；情绪定了能做的动作和回话按钮；动作对不上就换默认的；碎碎念的鼓脸不演成生气', async () => {
+  const { EMOTIONS, fitAnim } = await import('../src/shared/emotion.js')
+  const { EMOTION_OF, EVENT_ANIM, ANIM_OF, KIND_OF, TPL } = await import('../src/core/lines.js')
+  const { EXPR, FX_OF, FX_SVG } = await import('../src/shared/pet-engine.js')
+  const { MOOD_ANIM, CHAT } = await import('../src/shared/chat.js')
+  for (const ev of Object.keys(TPL)) assert.ok(EMOTIONS[EMOTION_OF[ev]], `${ev} 没有情绪`)
+  for (const [name, e] of Object.entries(EMOTIONS)) {
+    assert.ok(e.anims.includes(e.def), name)
+    for (const a of e.anims) assert.ok(EXPR[a], `${name} → ${a}`)
+    assert.ok(e.buttons.length >= 2 && e.buttons.length <= 3, name)
+    for (const [label, replies, anim, mood] of e.buttons) {
+      assert.ok([...label].length <= 8, label); assert.ok(replies.length >= 3 && replies.every(r => [...r].length <= 40), label)
+      assert.ok(EXPR[anim] && CHAT[mood], label)
+    }
+  }
+  // 事件的默认动作都在它那种情绪允许的范围里
+  for (const ev of Object.keys(TPL)) { const a = EVENT_ANIM[ev] || ANIM_OF[KIND_OF[ev] || 'stat']; assert.ok(EXPR[fitAnim(EMOTION_OF[ev], a)], ev) }
+  assert.equal(fitAnim('sorry', 'proud'), 'bow')                  // 认错不能配得意
+  assert.equal(fitAnim('sorry', 'bury'), 'bury')
+  assert.equal(fitAnim('coax', 'angry'), 'coax')                  // 撒娇不能配生气
+  assert.equal(fitAnim('brag', null), 'proud')
+  for (const e of ['coax', 'sorry', 'brag', 'caught', 'scold', 'night', 'miss', 'tally', 'eat', 'halt']) assert.ok(!EMOTIONS[e].anims.includes('angry'), e)
+  assert.notEqual(MOOD_ANIM.pout, 'angry')
+  assert.ok(![].concat(EXPR.pouty, EXPR.coax).some(f => FX_OF[f] === 'anger'))     // 鼓脸、撒娇的图不挂怒气
+  for (const f of Object.values(FX_OF)) assert.ok(FX_SVG[f]?.startsWith('<svg'), f)
+  assert.deepEqual(EMOTIONS.sorry.buttons.map(b => b[0]).slice(0, 2), ['原谅你了', '还敢？'])
+  assert.deepEqual(EMOTIONS.coax.buttons.map(b => b[0]), ['陪你玩', '给你买零食', '等会儿嘛'])
+})
