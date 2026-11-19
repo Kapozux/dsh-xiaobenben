@@ -78,3 +78,20 @@ test('本机已经有的不下载：dsh-pet 装过的那份（$DSH_HOME/electron
   assert.deepEqual(b.launched, [path.join(b.dir, 'electron', BIN)])
   db.stop()
 })
+
+test('桌面版给得出引擎 import 的每一个模块（少一个整页白屏）', async () => {
+  const fsm = await import('node:fs'); const pathm = await import('node:path')
+  const root = pathm.resolve(import.meta.dirname, '..')
+  const main = fsm.readFileSync(pathm.join(root, 'desktop/main.cjs'), 'utf8')
+  assert.match(main, /src\/shared', u\.pathname/, '桌面版要能按名字给 src/shared 底下的模块')
+  const seen = new Set(); const todo = ['pet-engine.js']
+  while (todo.length) {
+    const f = todo.pop(); if (seen.has(f)) continue; seen.add(f)
+    const file = pathm.join(root, 'src/shared', f)
+    assert.ok(fsm.existsSync(file), f + ' 不在 src/shared 里，桌面版加载不到')
+    for (const m of fsm.readFileSync(file, 'utf8').matchAll(/^import .* from '([^']+)'/gm)) {
+      assert.match(m[1], /^\.\/[\w-]+\.js$/, f + ' import 了 ' + m[1] + '：桌面版只给同目录的 .js')
+      todo.push(m[1].slice(2))
+    }
+  }
+})

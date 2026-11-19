@@ -59,7 +59,8 @@ app.whenReady().then(() => {
       if (!fs.existsSync(f)) return new Response('', { status: 404 })
       return net.fetch(pathToFileURL(f).toString())
     }
-    const rel = STATIC[u.pathname]
+    // 引擎 import 的同目录模块（emotion.js 这些）：src/shared/ 底下有就给，免得新加一个文件桌面版就白屏
+    const rel = STATIC[u.pathname] || (/^\/[\w-]+\.js$/.test(u.pathname) && fs.existsSync(path.join(ROOT, 'src/shared', u.pathname)) ? 'src/shared' + u.pathname : null)
     if (!rel) return new Response('', { status: 404 })
     return net.fetch(pathToFileURL(path.join(ROOT, rel)).toString())
   })
