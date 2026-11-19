@@ -1,6 +1,6 @@
 {
   "name": "dsh-xiaobenben",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "小本本：在 DeepSeek Harness 里做 agent 年度回顾（统计和原话在本机算，AI 部分点了才跑、先报价，导出分享图），以及「翻旧账」——右下角的小本本鲸鱼娘一次说一件你和 agent 一起干过的真事。",
   "type": "module",
   "main": "src/index.js",
@@ -50,8 +50,8 @@
     "@electron/get": "^5.1.0"
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-llm": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-session-query": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-llm": ">=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-0 <0.2.2-0 || >=0.2.2-0 <0.3.0-0",
+    "@deepseek-ai/dsh-session-query": ">=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-0 <0.2.2-0 || >=0.2.2-0 <0.3.0-0",
     "react": "^18.2.0"
   },
   "devDependencies": {

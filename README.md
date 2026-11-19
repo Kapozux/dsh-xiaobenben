@@ -31,7 +31,7 @@ dsh plugin --profile web add dsh-xiaobenben
 上面两种都不行时，可以直接装打好的包：
 
 ```sh
-dsh plugin --profile web add https://github.com/Kapozux/dsh-xiaobenben/releases/download/v0.2.2/dsh-xiaobenben-0.2.2.tgz
+dsh plugin --profile web add https://github.com/Kapozux/dsh-xiaobenben/releases/download/v0.2.3/dsh-xiaobenben-0.2.3.tgz
 ```
 
 改代码时可以装本地目录（链接，改完 `pnpm run build` 再重开 dsh，不用重装）：
@@ -84,7 +84,7 @@ dsh plugin --profile web add ./dsh-xiaobenben
 3. 想要 AI 部分：点「看看要发什么」。报价页写明发给哪家、哪个模型，大概多少 token，要发的全文可以展开看。可以这一次单独换个模型，不改 dsh 的默认设置。点「发送」才发。结果存在本机，下次打开不重跑。
 4. 在预览里隐藏不想放进图里的卡片，然后「下载长图」或「下载 3:4 卡片」。
 
-对着 dsh **0.2.0-rc.2** 开发和测试。用到的每个 dsh API 都写在 [docs/dsh-api.md](docs/dsh-api.md) 里，带源码出处。
+对着 dsh **0.2.0-rc.2** 开发，在 **0.2.2-rc.5** 上也装过、跑过（挂件、气泡、年度回顾页、读会话；模型写台词那一步没在 0.2.2-rc.5 上跑）。声明兼容 dsh 0.2.x；0.2.2 及更早的小本本把依赖写死在 0.2.0-rc.2，新版 dsh 会拒绝安装，请用 0.2.3 以上。用到的每个 dsh API 都写在 [docs/dsh-api.md](docs/dsh-api.md) 里，带源码出处。
 
 ## 会发出去什么、不会发什么
 
