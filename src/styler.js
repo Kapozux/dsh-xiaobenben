@@ -5,7 +5,7 @@
  *   没同意、没配模型、调用失败、某件事一个版本都没过核对：照旧说模板的（Pet.moments 里换）。
  * 同一时间只跑一个，不排队；页面关了照跑，页面轮询 status。
  */
-import { styleQuote, styleRun, cardsHash } from './core/style.js'
+import { styleQuote, styleRun, cardsHash, validLines } from './core/style.js'
 
 export class Styler {
   /** @param {{ pet: import('./pet.js').Pet, store: import('./store.js').Store, adapter: any, prices?: any[] }} deps */
@@ -22,7 +22,8 @@ export class Styler {
   async pending(redo = false) {
     const { moments } = await this.pet.moments({ raw: true })
     const have = this.store.read().styled || {}
-    return moments.filter(m => m.card?.id && m.card.fact && !m.sensitive.length && (redo || !have[m.card.id])).map(m => m.card)
+    // 库里有、但照现在的事件卡已经对不上的（时间过期了、数变了），也算还没写
+    return moments.filter(m => m.card?.id && m.card.fact && !m.sensitive.length && (redo || !validLines(m.card, have[m.card.id]).length)).map(m => m.card)
   }
 
   /** 第一次问过了没有、主人怎么答的：'yes' | 'no' | null（还没问） */

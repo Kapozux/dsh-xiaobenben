@@ -1,7 +1,7 @@
 // 翻旧账的 AI 改写：核对规则 + 一批跑下来（假模型），不合格的用模板兜底。
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { checkLine, cardLine, outCard, styleRun, styleQuote, cardsHash } from '../src/core/style.js'
+import { checkLine, checkOption, cleanLine, cardLine, outCard, styleRun, styleQuote, cardsHash } from '../src/core/style.js'
 
 const complain = { id: 'c1', kind: 'complain', event: 'complain', when: '10 月 4 日弄 my-app 那阵', time: '10 月 4 日', rel: '上个月', task: 'my-app', said: '你到底行不行', fact: '上个月（当时在弄 my-app），主人对本肥鱼干的活不满意，说了「你到底行不行」', ctx: '主人：把登录页的按钮改圆一点\n本肥鱼：改好了，刷新就能看到。\n主人：你到底行不行' }
 const caught = { id: 'k1', kind: 'caught', event: 'caught', when: '11 月 5 日下午', time: '11 月 5 日下午', rel: '上周三下午', claim: '改好了', next: '还是不行', fact: '上周三下午，本肥鱼跟主人说弄好了，结果没好，主人回了一句「还是不行」', ctx: '主人：帮我修一下登录页\n本肥鱼：改好了，测试全过了。\n主人：还是不行' }
@@ -70,34 +70,94 @@ test('核对·语气：对主人说话、有语气词、不写旁白、不照抄
   assert.equal(checkLine(owe, '主人说了本肥鱼 90 回不对，本肥鱼只认了 59 回……\n（小声）剩下 31 回先欠着嘛～'), null)
 })
 
-test('跑一批：先写后挑。程序核对扔掉改了原话的；挑的时候标成有问题的不选，全有问题就照模板念；调用失败重试一次；动作跟着选中的那版走', async () => {
-  const good1 = '主人还记得吗，上个月你问本肥鱼「你到底行不行」……呜，现在行一点了嘛～', good2 = '诶，「你到底行不行」，这句是主人上个月问的。本肥鱼还欠主人一个行呢，嘿嘿～'
+const stageOf = system => system.includes('挑出最好的一版') ? 'pick' : system.includes('写 3 个按钮') ? 'options' : system.includes('检查每一组') ? 'check' : 'write'
+
+test('跑一批：写 → 挑 → 写回话 → 查回话。改了原话的扔掉；全有问题就照模板念；动作按情绪收住；回话只有一层', async () => {
+  const good1 = '主人还记得吗，上个月你问本肥鱼「你到底行不行」……呜，现在行一点了嘛～'
   const calls = []
   const adapter = async ({ system, prompt }) => {
-    const pick = system.includes('台词编辑')
-    calls.push(pick ? 'pick' : 'write')
+    const stage = stageOf(system)
+    calls.push(stage)
     if (calls.length === 1) throw new Error('网络断了')
-    if (!pick) return { text: JSON.stringify({ lines: /上一遍写的都没过检查/.test(prompt)
-      ? [{ id: 'w1', texts: [{ t: '主人昨天上午只说了「做吧」，本肥鱼就干了 22 分钟呀，主人还笑着走开了，哼～', a: '得意' }] }]             // 第二遍 w1 过了程序核对，但编了细节
-      : [{ id: 'c1', texts: [{ t: good1, a: '委屈' }, { t: '主人那句「你到底行不行啊」，本肥鱼记着呢～', a: '委屈' }, { t: good2, a: '本子挡脸' }] }, { id: 'k1', texts: ['主人，上周三下午你回「根本不行」，呜。'] }] }) }
-    assert.match(prompt, /候选：\n    1\. /)
-    return { text: JSON.stringify({ picks: [{ id: 'c1', best: 2, bad: [], why: '落点在最后' }, { id: 'w1', best: 0, bad: [1], why: '编了主人笑着走开' }] }) }
+    if (stage === 'write') return { text: JSON.stringify({ lines: /上一遍写的都没过检查/.test(prompt)
+      ? [{ id: 'w1', texts: [{ beats: [{ t: '主人昨天上午只说了「做吧」，本肥鱼就干了 22 分钟呀，主人还笑着走开了，哼～', a: '得意' }] }] }]             // 第二遍 w1 过了程序核对，但编了细节
+      : [{ id: 'c1', texts: [
+          { beats: [{ t: good1, a: '委屈' }] },
+          { beats: [{ t: '主人那句「你到底行不行啊」，本肥鱼记着呢～', a: '委屈' }] },                                             // 改了原话
+          { beats: [{ t: '诶，「你到底行不行」，这句是主人上个月问的。', a: '得意' }, { t: '本肥鱼还欠主人一个行呢，嘿嘿～', a: '欢呼' }] },     // 挨骂配了得意和欢呼：两拍都收回这种情绪的默认动作
+        ] }, { id: 'k1', texts: ['主人，上周三下午你回「根本不行」，呜。'] }] }) }
+    if (stage === 'pick') { assert.match(prompt, /候选：\n    1\. /); return { text: JSON.stringify({ picks: [{ id: 'c1', best: 2, bad: [], why: '落点在最后' }, { id: 'w1', best: 0, bad: [1], why: '编了主人笑着走开' }] }) } }
+    if (stage === 'options') {
+      assert.match(prompt, /她说的台词：诶，「你到底行不行」/)
+      assert.doesNotMatch(prompt, /id=w1|id=k1/)                              // 没写成的事不写回话
+      return { text: JSON.stringify({ branches: [{ id: 'c1', options: [
+        { label: '现在行了', reply: { beats: [{ t: '嘿嘿，主人都这么说了，本肥鱼就信啦～', a: '摇尾巴' }], options: [{ label: '再来', reply: { beats: [{ t: '第二层' }] } }] } },   // 想再往下开一层：只留这一层
+        { label: '还是不太行吧哈哈哈', reply: { beats: [{ t: '呜，主人又损本肥鱼嘛。', a: '委屈' }] } },                                  // 按钮超过 6 个字
+        { label: '还差点', reply: { beats: [{ t: '呜，主人再给本肥鱼 3 天嘛。', a: '委屈' }] } },                                         // 数字卡片里没有
+        { label: '随便问问', reply: { beats: [{ t: '主人随便问，本肥鱼可是认真记的哦。', a: '记账' }] } },
+        { label: '别记仇', reply: { beats: [{ t: '才没有记仇呢，主人，就记了一小笔嘛。', a: '探头' }] } },
+      ] }] }) }
+    }
+    assert.match(prompt, /1\. 主人：现在行了 → 本肥鱼：嘿嘿/)
+    return { text: JSON.stringify({ checks: [{ id: 'c1', bad: [3] }] }) }       // 第三个（别记仇）被查出有问题
   }
   const r = await styleRun({ adapter, cards: [complain, caught, terse], route: { provider: 'p', model: 'm' } })
-  assert.deepEqual(calls, ['write', 'write', 'write', 'pick'])           // 第一批失败重试 1 次；没过核对的再写 1 次；挑 1 次
-  assert.deepEqual(r.lines, { c1: [{ text: good2, anim: 'caught' }] })
-  assert.equal(r.dropped, 2)                                             // 程序核对扔掉的：c1 改了原话的 1 版、k1 改了原话的 1 版
+  assert.deepEqual(calls, ['write', 'write', 'write', 'pick', 'options', 'check'])   // 第一批失败重试 1 次；没过核对的再写 1 次；后面三步各 1 次
+  const line = r.lines.c1[0]
+  assert.equal(line.text, '诶，「你到底行不行」，这句是主人上个月问的。\n本肥鱼还欠主人一个行呢，嘿嘿～')
+  assert.deepEqual(line.beats.map(b => b.a), ['pause', 'pause'])                // 第一拍是这类事的招牌姿势，模型挑的不算；第二拍情绪没转，不换姿势
+  assert.deepEqual(line.options.map(o => o.label), ['现在行了', '随便问问'])
+  assert.deepEqual(line.options[0].reply, { beats: [{ t: '嘿嘿，主人都这么说了，本肥鱼就信啦～', a: 'wag' }] })   // reply 里的 options 丢掉了
+  assert.equal(JSON.stringify(r.lines).includes('第二层'), false)
+  assert.equal(r.dropped, 2)                                             // 程序核对扔掉的版本：c1 改了原话的 1 版、k1 改了原话的 1 版
   assert.deepEqual(r.failed.map(f => f.id).sort(), ['k1', 'w1'])
   assert.match(r.failed.find(f => f.id === 'w1').why, /几个版本都有问题（编了主人笑着走开/)
+  assert.deepEqual(Object.keys(r.lines), ['c1'])
 })
 
-test('预计 token：写和挑两步都算；样例里有带对话的卡片；指纹跟着卡片变', () => {
+test('回话没写成也不影响台词：按钮不到 2 个、查回话那步失败，都只是没有模型写的按钮（界面用默认的）', async () => {
+  const mk = optionsReply => async ({ system }) => {
+    const stage = stageOf(system)
+    if (stage === 'write') return { text: JSON.stringify({ lines: [{ id: 'w1', texts: [{ beats: [{ t: '主人昨天上午只说了「做吧」，本肥鱼就干了 22 分钟呢，夸一句嘛～', a: '得意' }] }] }] }) }
+    if (stage === 'pick') return { text: JSON.stringify({ picks: [{ id: 'w1', best: 1, bad: [] }] }) }
+    if (stage === 'options') return { text: optionsReply }
+    throw new Error('查回话挂了')
+  }
+  const one = await styleRun({ adapter: mk(JSON.stringify({ branches: [{ id: 'w1', options: [{ label: '辛苦啦', reply: { beats: [{ t: '嘿嘿，主人这句本肥鱼收下啦～', a: '摇尾巴' }] } }] }] })), cards: [terse], route: { provider: 'p', model: 'm' } })
+  assert.equal(one.lines.w1[0].text.includes('22 分钟'), true)
+  assert.deepEqual(one.lines.w1[0].options, [])                           // 只有 1 个合格的按钮：不用
+  const two = JSON.stringify({ branches: [{ id: 'w1', options: [{ label: '辛苦啦', reply: { beats: [{ t: '嘿嘿，主人这句本肥鱼收下啦～', a: '摇尾巴' }] } }, { label: '就这？', reply: { beats: [{ t: '什么叫就这嘛，主人，哼。', a: '小声嘀咕' }] } }] }] })
+  const failedCheck = await styleRun({ adapter: mk(two), cards: [terse], route: { provider: 'p', model: 'm' } })
+  assert.deepEqual(failedCheck.lines.w1[0].options, [])                   // 查回话那步失败：没人查过，不用
+  assert.match(failedCheck.branches.w1.why.join(), /查回话的那一步调用失败/)
+})
+
+test('库里的台词只留认得的形状：分支只有一层，按钮最多 6 个字，多出来的截掉', () => {
+  const dirty = { text: '第一行\n第二行', anim: 'proud', beats: [{ t: '第一行', a: 'proud', x: 1 }, { t: '第二行', a: 'wag' }, { t: '第三行' }], extra: 1,
+    options: [
+      { label: '夸夸', reply: { beats: [{ t: '嘿嘿～', a: 'wag' }, { t: '第二拍' }], options: [{ label: '深一层', reply: { beats: [{ t: '不该有' }] } }] } },
+      { label: '这个按钮太长了吧', reply: { beats: [{ t: '呜' }] } },
+      { label: '哼', reply: { beats: [{ t: '主人哼什么嘛', a: 'mutter' }] }, children: [1] },
+    ] }
+  const c = cleanLine(dirty)
+  assert.deepEqual(c, { text: '第一行\n第二行', anim: 'proud', beats: [{ t: '第一行', a: 'proud' }, { t: '第二行', a: 'wag' }],
+    options: [{ label: '夸夸', reply: { beats: [{ t: '嘿嘿～', a: 'wag' }] } }, { label: '哼', reply: { beats: [{ t: '主人哼什么嘛', a: 'mutter' }] } }] })
+  assert.equal(JSON.stringify(c).includes('深一层'), false)
+  assert.deepEqual(cleanLine('一句老格式的台词'), { text: '一句老格式的台词', anim: null, beats: [{ t: '一句老格式的台词', a: null }], options: [] })
+  assert.deepEqual(cleanLine({ text: '老格式', anim: 'bow' }).beats, [{ t: '老格式', a: 'bow' }])
+  assert.equal(cleanLine({ beats: [] }), null)
+  assert.match(checkOption(complain, { label: '这个按钮太长了吧', reply: { beats: [{ t: '呜，主人嘛。' }] } }), /超过 6 个字/)
+  assert.match(checkOption(complain, { label: '还行', reply: { beats: [{ t: '呜，主人说还行，本肥鱼就当是夸了，记在小本本第一页上，天天翻着看哦～' }] } }), /回话超过一行/)
+  assert.match(checkOption(complain, { label: '还行', reply: { beats: [{ t: '本肥鱼记下了。' }] } }), /不是在对主人说话/)
+})
+
+test('预计 token：写、挑、写回话、查回话四步都算；样例里有带对话的卡片；指纹跟着卡片变', () => {
   const q = styleQuote([complain, caught, owe], { provider: 'p', model: 'm' }, [{ provider: 'p', model: 'm', input: 1, output: 2, currency: 'CNY' }])
   assert.equal(q.count, 3)
-  assert.equal(q.calls, 2)
+  assert.equal(q.calls, 4)                                       // 写、挑、写回话、查回话各一次
   assert.equal(q.withContext, 2)
-  assert.equal(q.inputTokens, q.stages.write.input + q.stages.pick.input)
-  assert.ok(q.stages.pick.input > 0 && q.outputTokens > 3 * 400)
+  assert.equal(q.inputTokens, q.stages.write.input + q.stages.pick.input + q.stages.options.input + q.stages.check.input)
+  assert.ok(q.stages.options.output >= 3 * 200 && q.outputTokens > 3 * 700)
   assert.equal(q.cost.currency, 'CNY')
   assert.match(q.prompt, /当时的对话/)
   assert.match(q.sample[0], /当时的对话/)
@@ -114,7 +174,9 @@ test('问一次、存本机、之后只发新的：私事不发；主人答「�
   const adapter = async ({ system, prompt }) => {
     sent.push(prompt)
     const ids = [...new Set([...prompt.matchAll(/id=(\w+)/g)].map(m => m[1]))]
-    if (system.includes('台词编辑')) return { text: JSON.stringify({ picks: ids.map(id => ({ id, best: 1, bad: [], why: '好' })) }) }
+    if (system.includes('挑出最好的一版')) return { text: JSON.stringify({ picks: ids.map(id => ({ id, best: 1, bad: [], why: '好' })) }) }
+    if (system.includes('写 3 个按钮')) return { text: JSON.stringify({ branches: ids.map(id => ({ id, options: [{ label: '现在行了', reply: { beats: [{ t: '嘿嘿，主人都这么说了，本肥鱼就信啦～', a: '摇尾巴' }] } }, { label: '还差点', reply: { beats: [{ t: '呜，主人再等等本肥鱼嘛。', a: '委屈' }] } }] })) }) }
+    if (system.includes('检查每一组')) return { text: JSON.stringify({ checks: ids.map(id => ({ id, bad: [] })) }) }
     return { text: JSON.stringify({ lines: ids.map(id => ({ id, texts: ['主人上个月问本肥鱼「你到底行不行」……呜，现在行一点了嘛～', '主人昨天上午只说了「做吧」，本肥鱼就干了 22 分钟呢，哼～'] })) }) }
   }
   const styler = new Styler({ pet: { moments: async () => ({ moments }) }, store, adapter })
@@ -133,7 +195,10 @@ test('问一次、存本机、之后只发新的：私事不发；主人答「�
   st = await styler.status()
   assert.equal(st.asked, 'yes')
   assert.equal(st.pending, 0)
-  assert.deepEqual(store.read().styled.c1, ['主人上个月问本肥鱼「你到底行不行」……呜，现在行一点了嘛～'])      // 第二个版本说的不是这件事（引的话、数字都不是这张卡的），扔掉
+  const saved = store.read().styled.c1
+  assert.equal(saved.length, 1)                                  // 第二个版本说的不是这件事（引的话、数字都不是这张卡的），扔掉
+  assert.equal(saved[0].text, '主人上个月问本肥鱼「你到底行不行」……呜，现在行一点了嘛～')
+  assert.deepEqual(saved[0].options.map(o => o.label), ['现在行了', '还差点'])          // 整棵分支一次写好存本机
   moments.push({ kind: 'work', card: terse, sensitive: [] })                 // 有了新的事：只发新的
   assert.equal((await styler.status()).pending, 1)
   const q2 = await styler.quote({ route })

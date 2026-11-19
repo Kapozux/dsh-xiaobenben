@@ -9,18 +9,22 @@
  */
 import { createHash } from 'node:crypto'
 import { estimateTokens, parseJson } from './ai.js'
-import { width, MAX_WIDTH } from './moments.js'
-import { checkLine as standard, voiceIssue, spaced } from './standard.js'
+import { width, MAX_WIDTH, phrases } from './moments.js'
+import { checkLine as standard, voiceIssue, spaced, bubbleLines } from './standard.js'
 import { PERSONA } from './persona.js'
-import { EMOTION_OF } from './lines.js'
-import { fitAnim } from '../shared/emotion.js'
+import { EMOTION_OF, signature } from './lines.js'
+import { poseBeats } from '../shared/emotion.js'
 import { EXAMPLE_RULES, OWNER_EXAMPLE, EXAMPLES, exampleFor } from './persona-examples.js'
 
 export const BATCH = 10                  // 写：一次 10 件事（每件 5 版，输出不小）
 export const PICK_BATCH = 20             // 挑：一次 20 件事
 export const VERSIONS = 5
-export const OUT_PER_CARD = 420          // 一件事五个版本 + JSON 包装，估的输出 token
+export const OUT_PER_CARD = 520          // 一件事五个版本（每版一两拍）+ JSON 包装，估的输出 token
 export const PICK_OUT_PER_CARD = 45
+export const OPT_BATCH = 10             // 写回话：一次 10 件事
+export const OPT_OUT_PER_CARD = 230      // 三个按钮 + 三句回话 + JSON 包装
+export const OPTCHECK_OUT_PER_CARD = 20
+export const LABEL_MAX = 6               // 按钮上主人的话最多几个字
 
 /** 模型能挑的动作 → 桌宠的动作名（src/shared/pet-engine.js 的 EXPR）。台词里不写动作，动作交给桌宠演 */
 export const ACTIONS = { 本子挡脸: 'caught', 鞠躬: 'bow', 委屈: 'sigh', 欢呼: 'cheer', 数饭碗: 'eat', 犯困: 'yawn', 吓一跳: 'startle', 得意: 'proud', 记账: 'work', 挥手: 'poke',
@@ -53,7 +57,7 @@ ${OWNER_EXAMPLE}
 - 每句都要有语气词（呜、嘿嘿、诶、嘛、呀、啦、哦、～ 之类）。
 - 数字要带主语，让主人一听就知道是谁干了什么：写「主人说了 90 回不对，本肥鱼才认了 59 回」，不写「90 和 59 摆一块」。
 - ${VERSIONS} 个版本要换角度、换句式：有的自嘲，有的撒娇，有的邀功，有的替主人说话，认错的最多两版。开头和结尾都别重样。
-- 动作不写在台词里：每个版本另外从这几个里挑一个动作，让桌宠去演——${Object.keys(ACTIONS).join('、')}。
+- 动作不写在台词里：每一拍另外从这几个里挑一个动作，让桌宠去演——${Object.keys(ACTIONS).join('、')}。
 
 # 硬规矩（程序逐句检查，不合格的版本直接扔掉）
 1. 原话一字不改：「」里只能放**事件卡第一行里「」中的那句话**，整句原样照抄，不改字、不截半句、不拼接、不加标点。那是主人说的，就写成主人说的。「当时的对话」只用来找感觉，里面的话一句都不许加引号引用——它们可能是在说别的事。第一行没有带「」的话，台词里就不要出现「」。
@@ -67,7 +71,9 @@ ${OWNER_EXAMPLE}
 9. 不用任务编号、文件路径、英文技术词（commit、PR、API、token 这类；token 说「白饭」）。对话里有这些也别抄进台词。
 10. 原话里打成 ×× 的脏话照抄。
 
-只输出一个 JSON 对象：{"lines": [{"id": "卡片 id", "texts": [{"t": "版本一的台词", "a": "动作"}, {"t": "版本二", "a": "动作"}, …共 ${VERSIONS} 个]}]}，不要 markdown 代码块，不要别的话。`
+每个版本写成一到两拍（beats）：一拍是气泡里的一行，带一个动作。第一拍的姿势程序会按这件事的类型定（招牌姿势），你挑的动作只在第二拍、而且情绪真的转了（比如认错认到最后嘿嘿一笑）时才用。
+
+只输出一个 JSON 对象：{"lines": [{"id": "卡片 id", "texts": [{"beats": [{"t": "第一行", "a": "动作"}, {"t": "第二行（可以没有）", "a": "动作"}]}, …共 ${VERSIONS} 个版本]}]}，不要 markdown 代码块，不要别的话。`
 
 export const PICK_SYSTEM = `你是台词编辑。桌宠「本肥鱼」（主人的 AI 编程助手，一只嘴硬心虚、贪吃、爱邀功、粘人的鲸鱼女仆）要当面跟主人翻旧账，下面每件事有一张事件卡（事实）和几个候选台词。给每件事挑出最好的一版。
 
@@ -84,6 +90,31 @@ G. 读不通，或者主人看了认不出在说哪件事。
 再从没问题的里面挑最好笑、最有这个角色味道的一版：有反差，落点在最后，像她自己凑过来跟主人嘀咕。全都有问题就不选（best 填 0），宁可不选，不要凑合。
 
 只输出一个 JSON 对象：{"picks": [{"id": "卡片 id", "best": 选中的候选编号（从 1 开始；都不行填 0）, "bad": [有问题的编号], "why": "一句话：为什么选它，或者都不行的原因"}]}，不要 markdown 代码块，不要别的话。`
+
+/** 第三步：给选中的台词写主人能回的话，和本肥鱼接的那一句 */
+export const OPTIONS_SYSTEM = `你来扮演「本肥鱼」。桌宠气泡里，本肥鱼刚跟主人翻完一件旧账（下面每件事给了事件卡和她说的那句台词）。现在给每件事写 3 个按钮：主人看完这句台词可能回的话，以及主人点了以后本肥鱼接的一句。
+
+# 角色设定
+${PERSONA}
+
+# 怎么写
+- label：主人说的话，是主人的口气，不超过 6 个字。3 个按钮语气要有区别：一个温柔（哄她、体谅她），一个吐槽（损她、不买账），一个随意（随口一句）。
+- reply：本肥鱼接的那一句，只有一拍、一行，不超过 26 个字。要接得上主人那句：被哄了就撒娇，被损了就嘴硬或心虚，随口一句就顺着聊。
+- reply 也是当面对主人说话：句里有「主人」，有语气词（呜、嘿嘿、嘛、哦、～），不写身体动作；动作另外挑一个：${Object.keys(ACTIONS).join('、')}。
+- 原话一字不改：要引就只能原样引事件卡第一行「」里的那句；数字只用事件卡第一行里的阿拉伯数字；不编卡片里没有的事；不说教；时间只用卡片上的说法或「那天」「那次」。
+- reply 里不要再给按钮：到这一句就结束。
+
+只输出一个 JSON 对象：{"branches": [{"id": "卡片 id", "options": [{"label": "主人说的话", "reply": {"beats": [{"t": "本肥鱼接的一句", "a": "动作"}]}}, …共 3 个]}]}，不要 markdown 代码块，不要别的话。`
+
+/** 第四步：查回话（程序查不了的） */
+export const OPTCHECK_SYSTEM = `你是台词编辑。桌宠「本肥鱼」翻完一件旧账以后，主人可以点按钮回一句，本肥鱼再接一句。下面每件事给了事件卡、她先说的台词、几组「主人的话 → 本肥鱼接的话」。检查每一组，有下面任何一条问题就记下它的编号：
+A. 主语说反：派活、说那句原话的是主人，干活的是本肥鱼。
+B. 编了细节，或者和事件卡的事实对不上。
+C. 按钮上的话不像主人会说的（像本肥鱼自己说的、或者看不懂）。
+D. 本肥鱼接的话接不上主人那句，或者读不通。
+E. 说教、鸡汤，或者嘲笑主人的能力、脾气、作息。
+
+只输出一个 JSON 对象：{"checks": [{"id": "卡片 id", "bad": [有问题的编号，从 1 开始；都没问题就是空数组]}]}，不要 markdown 代码块，不要别的话。`
 
 const KIND = { work: '干活', late: '熬夜', stopped: '被喊停', caught: '被抓包', complain: '挨骂', sorry: '认错', report: '交差', stat: '总账' }
 /** 事件（比大类细，告诉模型这件事的看点在哪） */
@@ -126,20 +157,24 @@ export function cardsHash(cards) {
   return createHash('sha256').update(cards.map(cardLine).join('\n')).digest('hex').slice(0, 16)
 }
 
-/** 预计 token：写一遍（没过核对的再写一次，多估三成）+ 挑一遍（事件卡再发一次，带上候选） */
+/** 预计 token：写（没过核对的再写一次，多估三成）+ 挑 + 写回话（三个按钮和接的话）+ 查回话。后三步都要把事件卡再发一次 */
 export function styleQuote(cards, route, prices = []) {
   const write = batches(cards).map(buildStylePrompt)
   const writeIn = write.reduce((a, p) => a + estimateTokens(p.system) + estimateTokens(p.prompt), 0)
   const writeOut = cards.length * OUT_PER_CARD
-  const pickCalls = Math.ceil(cards.length / PICK_BATCH)
-  const pickIn = pickCalls * estimateTokens(PICK_SYSTEM) + cards.reduce((a, c) => a + estimateTokens(cardLine(c)) + VERSIONS * 55, 0)
+  const cardTok = cards.reduce((a, c) => a + estimateTokens(cardLine(c)), 0)
+  const pickCalls = Math.ceil(cards.length / PICK_BATCH), optCalls = Math.ceil(cards.length / OPT_BATCH)
+  const pickIn = pickCalls * estimateTokens(PICK_SYSTEM) + cardTok + cards.length * VERSIONS * 55
   const pickOut = cards.length * PICK_OUT_PER_CARD
-  const inputTokens = Math.round(writeIn * 1.3 + pickIn), outputTokens = Math.round(writeOut * 1.3 + pickOut)
+  // 写回话：合格按钮不到 2 个的会再写一次，多估三成
+  const optIn = Math.round((optCalls * estimateTokens(OPTIONS_SYSTEM) + cardTok + cards.length * 60) * 1.3), optOut = Math.round(cards.length * OPT_OUT_PER_CARD * 1.3)
+  const checkIn = pickCalls * estimateTokens(OPTCHECK_SYSTEM) + cardTok + cards.length * 160, checkOut = cards.length * OPTCHECK_OUT_PER_CARD
+  const inputTokens = Math.round(writeIn * 1.3 + pickIn + optIn + checkIn), outputTokens = Math.round(writeOut * 1.3 + pickOut + optOut + checkOut)
   const price = prices.find(p => p.provider === route.provider && p.model === route.model)
   const cost = price ? (inputTokens * price.input + outputTokens * price.output) / 1e6 : null
   return {
-    route, count: cards.length, calls: write.length + pickCalls, inputTokens, outputTokens, hash: cardsHash(cards),
-    stages: { write: { calls: write.length, input: Math.round(writeIn * 1.3), output: Math.round(writeOut * 1.3) }, pick: { calls: pickCalls, input: pickIn, output: pickOut } },
+    route, count: cards.length, calls: write.length + pickCalls + optCalls + pickCalls, inputTokens, outputTokens, hash: cardsHash(cards),
+    stages: { write: { calls: write.length, input: Math.round(writeIn * 1.3), output: Math.round(writeOut * 1.3) }, pick: { calls: pickCalls, input: pickIn, output: pickOut }, options: { calls: optCalls, input: optIn, output: optOut }, check: { calls: pickCalls, input: checkIn, output: checkOut } },
     withContext: cards.filter(c => c.ctx).length,
     cost: cost === null ? null : { amount: cost, currency: price.currency || 'USD' },
     system: STYLE_SYSTEM, prompt: cards.map(cardLine).join('\n\n'), sample: cards.filter(c => c.ctx).slice(0, 2).concat(cards.filter(c => !c.ctx).slice(0, 1)).map(cardLine),
@@ -172,10 +207,11 @@ export function copiedFromExample(text, fact = '') {
 /** 这件事自己的原话：事件卡第一行里「」中的那一两句。台词只许引它们（当时的对话是给模型找感觉用的，里面的话可能是别的事的，不许引） */
 export const ownQuotes = c => [...String(c.fact || '').matchAll(/「([^」]*)」/g)].map(m => m[1])
 /** 核对一个版本：不合格返回原因，合格返回 null */
-export function checkLine(card, text) {
+export function checkLine(card, text, { reply = false } = {}) {
   if (typeof text !== 'string' || !text.trim()) return '空的'
   const t = text.trim().replace(/\n{2,}/g, '\n')
   if (t.split('\n').length > 2) return '超过两行'
+  if (reply && bubbleLines(t) > 1) return '回话超过一行'
   if (width(t) > MAX_WIDTH) return `${width(t)} 字，超过 ${MAX_WIDTH}`
   if (/(^|\n)\s*(本肥鱼|本鱼|本鲸|大肥鱼|主人|你)\s*[：:]/.test(t)) return '对话体（写了说话人标签）'
   if (/\p{Extended_Pictographic}/u.test(t)) return '有 emoji'
@@ -189,7 +225,7 @@ export function checkLine(card, text) {
   if (card.event === 'stat_today' && !tight(t).includes(tight(card.t))) return `没照写「${card.t}」`
   const proj = card.project || card.task
   if (proj && tight(t).split(tight(proj)).length - 1 > 1) return '项目名出现了不止一次'
-  if (card.project && NEED_PROJECT.has(card.event) && !tight(t).includes(tight(card.project))) return `这类事必须带项目名「${card.project}」`
+  if (!reply && card.project && NEED_PROJECT.has(card.event) && !tight(t).includes(tight(card.project))) return `这类事必须带项目名「${card.project}」`
   const std = standard(t, { project: [card.task, card.project].filter(Boolean).join(' '), voice: false }).find(b => b.rule === '行话' || b.rule === '私事' || b.rule === '行数')
   if (std) return `${std.rule}（${std.why}）`
   const spans = [...t.matchAll(/「([^」]*)」/g)].map(m => m[1])
@@ -207,18 +243,78 @@ export function checkLine(card, text) {
   const plainWords = s => String(s).replace(/一(天|回|次|句|下|口气|会儿|点|碗饭)|[几]回|半天|一半/g, '')
   const allowed = new Set(plainWords(card.fact || '').match(HAN) || [])
   for (const h of plainWords(bare).match(HAN) || []) if (!allowed.has(h)) return `把数字写成了汉字（${h}，没法核对）`
-  if (/」[。！？…\s]*$/.test(t) && !/^「/.test(t)) return '只有钩子，引完原话就结束了，没有本肥鱼的反应'
+  if (!reply && /」[。！？…\s]*$/.test(t) && !/^「/.test(t)) return '只有钩子，引完原话就结束了，没有本肥鱼的反应'
   return null
 }
 
+/** 模型写的一拍 → { t, a }（a 是桌宠的动作名，不认识的是 null）。只认这两个字段，多出来的一律不要 */
+const beatOf = b => (typeof b === 'string' ? { t: b, a: null } : { t: typeof (b?.t ?? b?.text) === 'string' ? (b.t ?? b.text) : '', a: ACTIONS[b?.a] || null })
+/** 模型写的一个版本 → 几拍。认 {beats:[…]}，也认老格式 {t,a} 和一句字符串 */
+const beatsOf = x => (Array.isArray(x?.beats) ? x.beats.map(beatOf) : [beatOf(x)]).filter(b => b.t.trim())
+
 /**
- * 跑一遍：写（5 版，程序核对，没过的带原因再写一次）→ 挑（模型挑一版，顺带查主语说反、编细节）。每次调用失败重试 1 次。
- * @returns {Promise<{ lines: Record<string, string[]>, failed: { id: string, why: string }[], dropped: number, errors: string[], usage: any[], picks: Record<string, any> }>}
- *   lines：每件事最后选中的那一版（数组里就一个：一句话，或者 { text, anim } 带上模型挑的动作）；failed：没写成的事和原因（照旧说模板的）；dropped：程序核对扔掉的版本数
+ * 存进库里的一条台词，只留认得的形状，别的全截掉：
+ *   { text, anim, beats: [{ t, a }], options: [{ label, reply: { beats: [{ t, a }] } }] }
+ * 分支只有一层：reply 里只认 beats，里面再出现 options（或者别的任何东西）都丢掉。读库的时候也过这一遍（src/pet.js），库里被改过也不会多出一层。
+ */
+export function cleanLine(x) {
+  if (typeof x === 'string') return x.trim() ? { text: x.trim(), anim: null, beats: [{ t: x.trim(), a: null }], options: [] } : null
+  const clean = b => ({ t: String(b?.t ?? '').trim(), a: typeof b?.a === 'string' ? b.a : null })
+  const beats = (Array.isArray(x?.beats) ? x.beats : typeof x?.text === 'string' ? x.text.split('\n').map((t, i) => ({ t, a: i ? null : x.anim })) : []).map(clean).filter(b => b.t).slice(0, 2)
+  if (!beats.length) return null
+  const options = (Array.isArray(x?.options) ? x.options : []).map(o => {
+    const rb = (Array.isArray(o?.reply?.beats) ? o.reply.beats : []).map(clean).filter(b => b.t).slice(0, 1)
+    return typeof o?.label === 'string' && o.label.trim() && [...o.label.trim()].length <= LABEL_MAX && rb.length ? { label: o.label.trim(), reply: { beats: rb } } : null
+  }).filter(Boolean).slice(0, 3)
+  return { text: beats.map(b => b.t).join('\n'), anim: beats[0].a || (typeof x?.anim === 'string' ? x.anim : null), beats, options: options.length >= 2 ? options : [] }
+}
+
+/**
+ * 库里存的台词现在还能不能说：事实会变（「昨天」过一天就不是昨天了，总账的数每天在涨），所以每次用之前照现在的事件卡再核对一遍。
+ * 台词本身不过 → 这件事回到模板，并且算作「还没写」（下次「更新台词」会重写）；只是某个回话不过 → 只丢那个回话。
+ * @returns {ReturnType<typeof cleanLine>[]}
+ */
+export function validLines(card, stored) {
+  return (Array.isArray(stored) ? stored : stored ? [stored] : []).map(cleanLine).filter(l => l && !checkLine(card, l.text)).map(l => {
+    const options = l.options.filter(o => !checkLine(card, o.reply.beats[0].t, { reply: true }))
+    return { ...l, options: options.length >= 2 ? options : [] }
+  })
+}
+
+export function buildOptionsPrompt(items) {
+  return { system: OPTIONS_SYSTEM, prompt: items.map(({ card, text }) => `${cardLine(card)}\n  她说的台词：${text.replace(/\n/g, ' / ')}`).join('\n\n') + '\n\n每件事写 3 个按钮，输出 JSON。' }
+}
+export function buildOptCheckPrompt(items) {
+  return { system: OPTCHECK_SYSTEM, prompt: items.map(({ card, text, options }) => `${cardLine(card)}\n  她先说的台词：${text.replace(/\n/g, ' / ')}\n  按钮：\n${options.map((o, i) => `    ${i + 1}. 主人：${o.label} → 本肥鱼：${o.reply.beats[0].t}`).join('\n')}`).join('\n\n') + '\n\n逐组检查，输出 JSON。' }
+}
+/**
+ * 核对模型写的一个按钮：{ label, reply }。合格返回整理好的 { label, reply: { beats: [{ t, a }] } }，不合格返回原因（字符串）。
+ * reply 里只认 beats；出现 options（想再往下开一层）或者别的字段，直接丢掉不看。
+ */
+export function checkOption(card, opt) {
+  const label = typeof opt?.label === 'string' ? opt.label.trim() : ''
+  if (!label) return '按钮没有字'
+  if ([...label].length > LABEL_MAX) return `按钮「${label}」超过 ${LABEL_MAX} 个字`
+  if (/[「」\n]/.test(label) || /\p{Extended_Pictographic}/u.test(label)) return '按钮里有引号、换行或 emoji'
+  const beats = (Array.isArray(opt?.reply?.beats) ? opt.reply.beats : []).map(beatOf).filter(b => b.t.trim())
+  if (!beats.length) return '没有回话'
+  if (beats.length > 1) return '回话超过一拍'
+  const why = checkLine(card, beats[0].t, { reply: true })
+  if (why) return `回话：${why}`
+  return { label, reply: { beats: [{ t: spaced(beats[0].t.trim()), a: beats[0].a }] } }
+}
+
+/**
+ * 跑一遍，四步，每次调用失败重试 1 次：
+ *   写（每件事 5 版，程序核对，没过的带原因再写一次）→ 挑（模型挑一版，顺带查主语说反、编细节）
+ *   → 写回话（给选中的那版写 3 个按钮和接的话，程序核对）→ 查回话（模型查程序查不了的）。
+ * 后两步出了问题（没写出来、核对不过、剩下不到 2 个按钮、调用失败）不影响台词本身：那件事的 options 是空的，界面上用按类型配的默认按钮。
+ * @returns {Promise<{ lines: Record<string, any[]>, failed: { id: string, why: string }[], dropped: number, errors: string[], usage: any[], picks: Record<string, any>, branches: Record<string, any> }>}
+ *   lines：每件事最后选中的那一版 [{ text, anim, beats, options }]；failed：没写成的事和原因（照旧说模板的）；dropped：程序核对扔掉的版本数
  */
 export async function styleRun({ adapter, cards, route, signal, onProgress = () => {} }) {
   const errors = [], usage = []
-  const cand = {}                                  // id → 过了程序核对的候选
+  const cand = {}                                  // id → 过了程序核对的候选 { text, beats }
   let dropped = 0, done = 0
   const total = cards.length
   const ask = async (system, prompt, maxTokens, key) => {
@@ -237,6 +333,8 @@ export async function styleRun({ adapter, cards, route, signal, onProgress = () 
     }
     return null
   }
+  /** 每一拍的姿势：第一拍是这件事的招牌姿势，模型另挑的不算；第二拍只有情绪真转了才换（emotion.js 的 poseBeats） */
+  const fitBeats = (card, beats, text) => poseBeats(EMOTION_OF[card.event], signature(card.event), beats, text)
   /** @param {any[]} list @param {Record<string, string>} [notes] 上一遍每件事没过的原因 */
   const write = async (list, notes) => {
     const out = []
@@ -244,20 +342,21 @@ export async function styleRun({ adapter, cards, route, signal, onProgress = () 
       if (signal?.aborted) { out.push(...batch.map(c => ({ id: c.id, why: '已停止', text: null }))); continue }
       let { system, prompt } = buildStylePrompt(batch)
       if (notes) prompt += `\n\n这几张上一遍写的都没过检查，原因如下，这次照着改：\n${batch.map(c => `id=${c.id}：${notes[c.id]}`).join('\n')}`
-      const got = await ask(system, prompt, batch.length * 520 + 300, 'lines')
-      // 模型挑的动作要和这件事的情绪对得上（认错不能配得意）：对不上就换成这种情绪的默认动作
-      const norm = (x, c) => typeof x === 'string' ? { text: x, anim: null } : { text: x?.t ?? x?.text, anim: ACTIONS[x?.a] ? fitAnim(EMOTION_OF[c?.event], ACTIONS[x.a]) : null }
-      const byId = new Map((got || []).map(l => [String(l?.id), (Array.isArray(l?.texts) ? l.texts : l?.text ? [l.text] : []).map(x => norm(x, batch.find(c => c.id === String(l?.id))))]))
+      const got = await ask(system, prompt, batch.length * 620 + 300, 'lines')
+      const byId = new Map((got || []).map(l => [String(l?.id), (Array.isArray(l?.texts) ? l.texts : l?.text ? [l.text] : []).map(beatsOf)]))
       for (const c of batch) {
-        const texts = byId.get(c.id) || []
+        const versions = byId.get(c.id) || []
         const why = [], ok = cand[c.id] || []
-        for (const { text, anim } of texts.slice(0, VERSIONS + 1)) {
-          const w = checkLine(c, text)
-          const clean = w ? '' : spaced(text.trim().replace(/\n{2,}/g, '\n'))       // 数字两边的空格统一
-          if (w) { why.push(w); dropped++ } else if (!ok.some(o => o.text === clean)) ok.push({ text: clean, anim })
+        for (const beats of versions.slice(0, VERSIONS + 1)) {
+          const raw = beats.slice(0, 3).map(b => b.t.trim()).join('\n')
+          const w = beats.length > 2 ? '超过两拍' : checkLine(c, raw)
+          if (w) { why.push(w); dropped++; continue }
+          const fitted = fitBeats(c, beats.map(b => ({ t: spaced(b.t.trim()), a: b.a })), raw)      // 数字两边的空格统一
+          const text = fitted.map(b => b.t).join('\n')
+          if (!ok.some(o => o.text === text)) ok.push({ text, beats: fitted })
         }
         if (ok.length) cand[c.id] = ok
-        else out.push({ id: c.id, why: !got ? '这批调用失败' : why[0] || '空的', text: typeof texts[0]?.text === 'string' ? texts[0].text.slice(0, 80) : null })
+        else out.push({ id: c.id, why: !got ? '这批调用失败' : why[0] || '空的', text: versions[0]?.[0]?.t?.slice(0, 80) ?? null })
       }
       if (!notes) done += batch.length
       onProgress({ stage: '写', done, total, ok: Object.keys(cand).length, failed: out.length })
@@ -273,24 +372,92 @@ export async function styleRun({ adapter, cards, route, signal, onProgress = () 
   }
 
   // 挑：过了核对的候选再让模型挑一版，顺带查主语说反、编细节。挑的这一步调用失败 = 没人查过，这几件事不用模型写的
-  const lines = {}, picks = {}
-  const items = cards.filter(c => cand[c.id]).map(c => ({ card: c, texts: cand[c.id].map(o => o.text), anims: cand[c.id].map(o => o.anim) }))
+  const chosen = {}, picks = {}
+  const usedPhrases = new Set()                    // 同一批里同一个短句最多出现一次
+  const items = cards.filter(c => cand[c.id]).map(c => ({ card: c, texts: cand[c.id].map(o => o.text) }))
   let picked = 0
   for (const batch of batches(items, PICK_BATCH)) {
     if (signal?.aborted) { errors.push('已停止'); failed.push(...batch.map(x => ({ id: x.card.id, why: '已停止', text: null }))); continue }
     const { system, prompt } = buildPickPrompt(batch)
     const got = await ask(system, prompt, batch.length * 90 + 200, 'picks')
     const byId = new Map((got || []).map(p => [String(p?.id), p]))
-    for (const { card, texts, anims } of batch) {
+    for (const { card, texts } of batch) {
       const p = byId.get(card.id)
       const bad = new Set((Array.isArray(p?.bad) ? p.bad : []).map(Number))
       const best = Number(p?.best)
       if (p) picks[card.id] = { best, bad: [...bad], why: String(p.why || '').slice(0, 120), candidates: texts }
-      if (p && best >= 1 && best <= texts.length && !bad.has(best)) lines[card.id] = [anims[best - 1] ? { text: texts[best - 1], anim: anims[best - 1] } : texts[best - 1]]
-      else failed.push({ id: card.id, why: !got ? '挑的那一步调用失败' : !p ? '挑的时候漏了这件事' : `几个版本都有问题（${String(p.why || '').slice(0, 60)}）`, text: texts[0].slice(0, 80) })
+      if (!(p && best >= 1 && best <= texts.length && !bad.has(best))) {
+        failed.push({ id: card.id, why: !got ? '挑的那一步调用失败' : !p ? '挑的时候漏了这件事' : `几个版本都有问题（${String(p.why || '').slice(0, 60)}）`, text: texts[0].slice(0, 80) })
+        continue
+      }
+      // 选中的那版要是用了这一批里别的台词用过的短句，换成别的没问题的版本；都撞了就照模板念
+      const own = new Set(phrases(card.fact || ''))
+      const fresh = t => phrases(t).filter(x => !own.has(x)).every(x => !usedPhrases.has(x))
+      const order = [best, ...texts.map((_, i) => i + 1).filter(i => i !== best && !bad.has(i))]
+      const use = order.find(i => fresh(texts[i - 1]))
+      if (!use) { failed.push({ id: card.id, why: '和这一批里别的台词撞了短句', text: texts[best - 1].slice(0, 80) }); continue }
+      phrases(texts[use - 1]).filter(x => !own.has(x)).forEach(x => usedPhrases.add(x))
+      chosen[card.id] = cand[card.id][use - 1]
     }
     picked += batch.length
-    onProgress({ stage: '挑', done: picked, total: items.length, ok: Object.keys(lines).length, failed: failed.length })
+    onProgress({ stage: '挑', done: picked, total: items.length, ok: Object.keys(chosen).length, failed: failed.length })
   }
-  return { lines, failed, dropped, errors, usage, picks }
+
+  // 写回话：给选中的那版写 3 个按钮（主人的话）和本肥鱼接的一句；只有一层
+  const branches = {}                              // id → { options, why: [扔掉的原因] }
+  const withLine = cards.filter(c => chosen[c.id]).map(c => ({ card: c, text: chosen[c.id].text }))
+  let wrote = 0
+  /** @param {any[]} list @param {boolean} retry 第二遍：带上第一遍没过的原因 */
+  const writeOptions = async (list, retry) => {
+    for (const batch of batches(list, OPT_BATCH)) {
+      if (signal?.aborted) break
+      let { system, prompt } = buildOptionsPrompt(batch)
+      if (retry) prompt += `\n\n这几件事上一遍写的按钮没过检查，原因如下，这次照着改（按钮不超过 ${LABEL_MAX} 个字；回话里要出现「主人」、有语气词、一行以内）：\n${batch.map(({ card }) => `id=${card.id}：${[...new Set(branches[card.id].why)].join('；')}`).join('\n')}`
+      const got = await ask(system, prompt, batch.length * 330 + 300, 'branches')
+      const byId = new Map((got || []).map(b => [String(b?.id), Array.isArray(b?.options) ? b.options : []]))
+      for (const { card } of batch) {
+        const ok = branches[card.id]?.options || [], why = []
+        for (const o of (byId.get(card.id) || []).slice(0, 4)) {
+          const r = checkOption(card, o)
+          if (typeof r === 'string') why.push(r)
+          else if (!ok.some(x => x.label === r.label)) ok.push(r)
+        }
+        branches[card.id] = { options: ok, why: !got ? ['这批调用失败'] : why }
+      }
+      if (!retry) wrote += batch.length
+      onProgress({ stage: '写回话', done: wrote, total: withLine.length, ok: Object.values(branches).filter(b => b.options.length >= 2).length, failed: failed.length })
+    }
+  }
+  await writeOptions(withLine, false)
+  // 合格的按钮不到 2 个的，带着原因再写一次（只这一次）
+  const short = withLine.filter(x => branches[x.card.id] && branches[x.card.id].options.length < 2 && !branches[x.card.id].why.includes('这批调用失败'))
+  if (short.length && !signal?.aborted) await writeOptions(short, true)
+  // 查回话：模型查程序查不了的（说反、编细节、接不上）。这一步调用失败 = 没人查过，这几件事不用模型写的按钮
+  const toCheck = withLine.filter(x => (branches[x.card.id]?.options.length || 0) >= 2).map(x => ({ ...x, options: branches[x.card.id].options }))
+  let checked = 0
+  for (const batch of batches(toCheck, PICK_BATCH)) {
+    if (signal?.aborted) { for (const x of batch) branches[x.card.id].options = []; continue }
+    const { system, prompt } = buildOptCheckPrompt(batch)
+    const got = await ask(system, prompt, batch.length * 40 + 200, 'checks')
+    const byId = new Map((got || []).map(c => [String(c?.id), c]))
+    for (const { card, options } of batch) {
+      const c = byId.get(card.id)
+      if (!c) { branches[card.id] = { options: [], why: [...branches[card.id].why, !got ? '查回话的那一步调用失败' : '查的时候漏了这件事'] }; continue }
+      const bad = new Set((Array.isArray(c.bad) ? c.bad : []).map(Number))
+      const kept = options.filter((_, i) => !bad.has(i + 1))
+      if (bad.size) branches[card.id].why.push(`查出有问题的按钮：${options.filter((_, i) => bad.has(i + 1)).map(o => o.label).join('、')}`)
+      branches[card.id].options = kept
+    }
+    checked += batch.length
+    onProgress({ stage: '查回话', done: checked, total: toCheck.length, ok: Object.values(branches).filter(b => b.options.length >= 2).length, failed: failed.length })
+  }
+
+  const lines = {}
+  for (const c of cards) {
+    if (!chosen[c.id]) continue
+    const opts = branches[c.id]?.options || []
+    const line = cleanLine({ beats: chosen[c.id].beats, options: opts.length >= 2 ? opts.slice(0, 3) : [] })
+    if (line) lines[c.id] = [line]
+  }
+  return { lines, failed, dropped, errors, usage, picks, branches }
 }

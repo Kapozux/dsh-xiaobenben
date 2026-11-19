@@ -5,6 +5,8 @@
  * 每件事带一个动作名（anim：work / sigh / cheer……），挂件按它换表情（src/shared/pet-engine.js 的 EXPR）。
  */
 import { buildMoments, dshTurns } from './core/moments.js'
+import { validLines } from './core/style.js'
+import { poseBeats } from './shared/emotion.js'
 import { loadClaudeTurns } from './sources/claude-turns.js'
 import { snapshot } from './live.js'
 
@@ -35,11 +37,12 @@ export class Pet {
     const styled = this.store.read().styled || {}
     return { ...v, moments: v.moments.map(m => {
       const got = styled[m.card?.id]
-      // 存的是 [一句话] 或 [{ text, anim }]（anim：模型给这句挑的动作）；更老的版本存的是一句字符串
-      const variants = (Array.isArray(got) ? got : got ? [got] : []).map(x => typeof x === 'string' ? { text: x } : x).filter(x => typeof x?.text === 'string' && x.text)
+      // 存的是 [{ text, anim, beats, options }]（老版本是一句字符串或 { text, anim }）。读出来只留认得的形状（分支只有一层），并且照现在的事件卡再核对
+      const variants = got && m.card ? validLines(m.card, got) : []      // 照现在的事件卡再核对一遍：时间、数字对不上了的不说
       if (!variants.length) return m
       const pick = variants[Math.floor(Math.random() * variants.length)]
-      return { ...m, text: pick.text, anim: pick.anim || m.anim, variants: variants.map(x => x.text), template: m.text, styled: true }
+      // 姿势不看库里存的：第一拍永远是这件事的招牌姿势（m.anim），落点只有情绪真转了才换
+      return { ...m, text: pick.text, beats: poseBeats(m.emotion, m.anim, pick.beats, pick.text), options: pick.options, variants: variants.map(x => x.text), template: m.text, styled: true }
     }) }
   }
 

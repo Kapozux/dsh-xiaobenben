@@ -8,8 +8,7 @@
  *
  * 私事判断只看原话素材（不看模板，模板里的「有感情了」不算感情）。原话都过 redact 打码。
  */
-import { TPL, KIND_OF, ANIM_OF, EVENT_ANIM, EMOTION_OF, FACT } from './lines.js'
-import { fitAnim } from '../shared/emotion.js'
+import { TPL, KIND_OF, EMOTION_OF, FACT, signature } from './lines.js'
 import { checkLine } from './standard.js'
 import crypto from 'node:crypto'
 import { redact } from './redact.js'
@@ -286,9 +285,13 @@ export function say(event, seed, ...varsList) {
       const t = list[idx].t
       if (NEED(t).some(k => vars[k] === undefined || vars[k] === null || vars[k] === '')) continue
       const out = render(t, vars)
+      // 同一批台词里，同一个短句（「嗝，谢谢款待」「谢谢主人没换鱼呀」）最多出现一次
+      const mine = phrases(t)
+      if (mine.some(x => say.phrases.has(x))) continue
       if (checkLine(out, { project: [vars.project, vars.place].filter(Boolean).join(' ') }).length) continue
       say.last = `${event}#${idx}`
       used[idx] = (used[idx] || 0) + 1
+      mine.forEach(x => say.phrases.add(x))
       return out
     }
   }
@@ -296,6 +299,9 @@ export function say(event, seed, ...varsList) {
 }
 
 say.used = {}
+say.phrases = new Set()
+/** 一句话里的短句：按标点切开，去掉占位符、引号里的话、「本肥鱼」「主人」，剩下 4 个字以上的 */
+export const phrases = t => String(t).replace(/「[^」]*」/g, '|').replace(/\{\w+\}/g, '|').split(/[，。！？…、：\n|～,.!?]+/).map(x => x.replace(/本肥鱼|主人|\s/g, '')).filter(x => [...x].length >= 4)
 
 const WEEK = '日一二三四五六'
 const partOf = h => h < 5 ? '凌晨' : h < 9 ? '早上' : h < 12 ? '上午' : h < 13 ? '中午' : h < 18 ? '下午' : '晚上'
@@ -443,6 +449,7 @@ const CAP = { caught: 60, complain: 60, cuss: 20, streak: 30, marks: 20, sorry: 
 export function buildMoments(turns, { since = 0, now = Date.now(), days = null, withSource = false } = {}) {
   const moments = []
   say.used = {}
+  say.phrases = new Set()
   const seenSrc = new Set()
   // 同一轮只算一次：Claude Code 续上旧会话时会把前面的记录抄进新文件
   const seenTurn = new Set()
@@ -487,12 +494,13 @@ export function buildMoments(turns, { since = 0, now = Date.now(), days = null, 
     if (kind !== 'stat' && qk.some(q => seenSrc.has(q))) return
     seenSrc.add(key); qk.forEach(q => seenSrc.add(q))
     // 事件卡：只放程序判断 / 算出来的事实。核对数字、给 AI 改写（core/style.js）都用它
-    const id = crypto.createHash('md5').update(event + '|' + (src || text) + '|' + ts).digest('hex').slice(0, 10)
+    // 事件的编号要稳定（模型写的台词按它存）：按「现在」算的总账不带时间，否则每次都是新编号
+    const id = crypto.createHash('md5').update(event + '|' + (src || text) + '|' + (kind === 'stat' && ts === now ? '' : ts)).digest('hex').slice(0, 10)
     const c = Object.fromEntries(Object.entries({ id, kind, event, ago: kind === 'stat' ? null : ago(ts, now), ...card }).filter(([, v]) => v !== null && v !== undefined && v !== ''))
     if (FACT[event]) c.fact = FACT[event](c).replace(/\s+/g, ' ')          // 大白话描述：发给模型的就是这句（core/style.js）
     if (turn && kind !== 'stat') c.ctx = contextOf(turn)                   // 事发前后几句原文（打码、≤300 字），给模型找味道用
     const sensitive = [...new Set([...(turn ? priv.get(turn) || [] : []), ...sensitiveCats(text)])]
-    const m = { kind, event, ts, day: dayKey(ts), hour: new Date(ts).getHours(), text, emotion: EMOTION_OF[event] || null, anim: fitAnim(EMOTION_OF[event], EVENT_ANIM[event] || ANIM_OF[kind]), sensitive, card: c, tpl: say.last }
+    const m = { kind, event, ts, day: dayKey(ts), hour: new Date(ts).getHours(), text, emotion: EMOTION_OF[event] || null, anim: signature(event), sensitive, card: c, tpl: say.last }
     if (withSource) m.source = sources || (turn ? [turn.text, turn.next, turn.title, ...turn.texts].filter(Boolean) : [])
     moments.push(m)
   }

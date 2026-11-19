@@ -326,7 +326,9 @@ test('情绪有转折的台词动作跟着转；夸主人的台词换一组按�
   const t = '那天本肥鱼一天认错 3 回……活最后也干完了嘛，嘿嘿。'
   assert.equal(t.slice(turnAt(t)), '活最后也干完了嘛，嘿嘿。')             // 说到落点才转
   assert.equal(turnAt('主人，本肥鱼错了。'), -1)                            // 只有一小句：不转
-  assert.equal(turnAt('主人说了 90 回不对。本肥鱼认了 59 回'), -1)         // 最后一小句没有落点：不转
+  const { realTurn } = await import('../src/shared/emotion.js')
+  assert.equal(realTurn('主人说了 90 回不对。本肥鱼认了 59 回'), false)      // 有落点，但情绪没转：姿势不换
+  assert.equal(realTurn('主人，本肥鱼说过「我理解错了」。\n呜，不是故意的，下次先想清楚再动手。'), true)
   assert.equal(TURN.sorry, 'headpat')
   assert.ok(praisesOwner('56 天，主人全给了 getAudio。都是你一点点磨出来的呀，本肥鱼作证。'))
   assert.ok(!praisesOwner('主人一句话，本肥鱼闷头干了 42 分钟。夸一句不过分吧？'))

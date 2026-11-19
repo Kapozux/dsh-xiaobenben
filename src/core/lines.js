@@ -14,6 +14,8 @@
  *   {project} 项目文件夹名  {days} 天数  {rel} 多久以前（「上个月」）  {relday}（「上个月有一天」）  {span} 总账看的天数
  * 不许在模板里写带「」的话：引号里只能是占位符填进来的原话。
  */
+import { fitAnim } from '../shared/emotion.js'
+
 const L = (t, mood, tone) => ({ t, mood, tone })
 
 export const TPL = {
@@ -221,7 +223,7 @@ export const EMOTION_OF = { caught: 'caught', complain: 'scold', cuss: 'scold', 
   eater: 'eat', stat_rice: 'eat', stat_first: 'miss', stat_today: 'miss',
   stat_owe: 'tally', stat_passnag: 'tally', stat_caught: 'tally', stat_stops: 'tally', stat_cuss: 'tally', stat_short: 'tally' }
 /** 事件 → 演哪个动作（没写的按大类走 ANIM_OF）。台词里不写身体动作，动作在这儿配 */
-export const EVENT_ANIM = { stopped: 'halt', halt: 'halt', pass: 'wag', passafter: 'wag', eater: 'full', stat_rice: 'full', cuss: 'curl', streak: 'curl', marks: 'pause', sorryday: 'bury', stat_caught: 'close', stat_owe: 'peek', stat_passnag: 'peek', stat_project: 'proud', stat_streak: 'wag', stat_first: 'headpat', stat_today: 'headpat', sorry: 'curl', stat_cuss: 'mutter', stat_stops: 'pause', stat_short: 'mutter', long: 'proud', terse: 'proud', late: 'yawn', night: 'yawn', stat_busiest: 'proud', stat_continue: 'proud', stat_asks: 'proud', stat_days: 'wag', stat_latest: 'yawn', stat_nights: 'yawn', stat_owl: 'yawn' }
+export const EVENT_ANIM = { stopped: 'halt', halt: 'halt', pass: 'wag', passafter: 'wag', eater: 'full', stat_rice: 'full', cuss: 'curl', streak: 'curl', marks: 'pause', sorryday: 'bury', stat_caught: 'close', stat_owe: 'peek', stat_passnag: 'peek', stat_project: 'proud', stat_streak: 'wag', stat_first: 'headpat', stat_today: 'headpat', sorry: 'curl', stat_cuss: 'mutter', stat_stops: 'pause', stat_short: 'mutter', long: 'proud', terse: 'proud', late: 'doze', night: 'doze', stat_busiest: 'proud', stat_continue: 'proud', stat_asks: 'proud', stat_days: 'wag', stat_latest: 'doze', stat_nights: 'doze', stat_owl: 'doze', complain: 'pause' }
 export const ANIM_OF = { caught: 'caught', complain: 'sigh', sorry: 'bow', stopped: 'startle', late: 'yawn', work: 'work', stat: 'eat' }
 
 const q = (pre, v, post = '') => v ? `${pre}「${v}」${post}` : ''
@@ -270,3 +272,6 @@ export const FACT = {
   stat_owl: c => `最近 ${c.span} 天，主人来找了本肥鱼 ${c.n} 天，其中 ${c.m} 天熬过了零点`,
   stat_today: c => `${c.t}，主人在弄 ${c.project}，和本肥鱼一共干了 ${c.dur}`,
 }
+
+/** 这种事件的招牌姿势：这句话从头到尾的主体动作（抓包捂嘴、熬夜趴着睡、吃白饭捧碗、邀功竖拇指……） */
+export const signature = event => fitAnim(EMOTION_OF[event], EVENT_ANIM[event] || ANIM_OF[KIND_OF[event] || 'stat'])

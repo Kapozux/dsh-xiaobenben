@@ -12,7 +12,7 @@ export const MOOD_ANIM = {
 
 /** 第一轮的反应按钮 / 👍👎 的动作 → 接下来的心情 */
 export const ANIM_MOOD = {
-  cheer: 'happy', proud: 'proud', bow: 'shy', caught: 'shy', sigh: 'sad', angry: 'pout', pouty: 'pout', coax: 'happy', wag: 'proud', headpat: 'happy', peek: 'shy', mutter: 'pout', bury: 'shy', curl: 'sad', full: 'eat', halt: 'surprised', pause: 'surprised', close: 'sad',
+  cheer: 'happy', proud: 'proud', bow: 'shy', caught: 'shy', sigh: 'sad', angry: 'pout', pouty: 'pout', coax: 'happy', doze: 'sleepy', wag: 'proud', headpat: 'happy', peek: 'shy', mutter: 'pout', bury: 'shy', curl: 'sad', full: 'eat', halt: 'surprised', pause: 'surprised', close: 'sad',
   yawn: 'sleepy', eat: 'eat', startle: 'surprised', file: 'thinking', work: 'thinking', poke: 'happy', idle: 'happy',
 }
 

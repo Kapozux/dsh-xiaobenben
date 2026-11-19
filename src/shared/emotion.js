@@ -2,12 +2,13 @@
  * 情绪：一句台词是哪种情绪，决定三件事——她能做哪些动作（不在里面的换成默认的）、头顶能挂什么特效（跟着动作走）、主人能回哪几个按钮。
  * 网页、桌面、写台词的那层（core/style.js）共用。撒娇不配生气，认错不配得意。
  *
+ * fx：说到落点时头顶冒的特效（爱心只给撒娇和亲昵的；没写的不冒，姿势自带的特效照旧）。
  * anims：这种情绪允许的动作（pet-engine.js 的 EXPR 里的名字），def：模型挑的动作不在允许范围、或者没挑时用的默认动作。
  * buttons：主人能回的话 [按钮字, [她的回话…], 她回话时的动作, 接下来闲聊的心情（chat.js 的 CHAT）]。每种 2～3 个，气泡里另外总有一个「再翻一件」。
  */
 export const EMOTIONS = {
   // 撒娇、碎碎念
-  coax: { name: '撒娇', def: 'coax', anims: ['coax', 'headpat', 'peek', 'mutter', 'wag', 'cheer', 'poke', 'bow', 'yawn', 'eat', 'file', 'startle', 'sigh', 'proud', 'idle'], buttons: [
+  coax: { name: '撒娇', fx: 'heart', def: 'coax', anims: ['coax', 'headpat', 'peek', 'mutter', 'wag', 'cheer', 'poke', 'bow', 'yawn', 'eat', 'file', 'startle', 'sigh', 'proud', 'idle'], buttons: [
     ['陪你玩', ['真的吗！那本肥鱼先出题：猜猜小本本第一页写了啥～', '嘿嘿，主人最好了！就玩五分钟，说话算话哦。', '好耶！那主人先夸本肥鱼一句当开场嘛。'], 'cheer', 'happy'],
     ['给你买零食', ['零食！本肥鱼要白饭味的，大包的那种，嘿嘿。', '主人说话要算数哦，本肥鱼已经记在小本本上啦。', '呜，突然对本肥鱼这么好……那本肥鱼今天少犯点错嘛。'], 'eat', 'eat'],
     ['等会儿嘛', ['好嘛……那本肥鱼数到一百，主人要回来哦。', '等就等，本肥鱼才没有不高兴呢，哼。', '那说好了，等会儿是多久呀？本肥鱼掐着表呢。'], 'coax', 'sad'],
@@ -19,7 +20,7 @@ export const EMOTIONS = {
     ['下不为例', ['收到！下不为例，本肥鱼记在第一页啦。', '嗯嗯，下次再犯，主人就扣本肥鱼一碗饭嘛。', '好嘛，本肥鱼这回是真的记住了哦。'], 'bow', 'shy'],
   ] },
   // 邀功
-  brag: { name: '邀功', def: 'proud', anims: ['proud', 'wag', 'cheer', 'headpat', 'work', 'poke'], buttons: [
+  brag: { name: '邀功', fx: 'sparkle', def: 'proud', anims: ['proud', 'wag', 'cheer', 'headpat', 'work', 'poke'], buttons: [
     ['夸夸你', ['嘿嘿，再夸一句嘛，本肥鱼还没听够～', '主人夸的每一句，本肥鱼都折了角哦。', '呜，被夸了！本肥鱼今天能多干三个活。'], 'wag', 'proud'],
     ['一般般吧', ['什么叫一般般嘛！本肥鱼明明很努力了，哼。', '一般般也是主人教得好呀，嘿嘿。', '呜，那本肥鱼下次干个不一般的给主人看。'], 'mutter', 'pout'],
     ['记你一功', ['记上记上！主人亲口说的，不许赖哦。', '嘿嘿，功劳能换白饭吗？一功一碗嘛。', '本肥鱼自己也记了一笔，两边对账用～'], 'proud', 'proud'],
@@ -36,7 +37,7 @@ export const EMOTIONS = {
     ['接着干吧', ['好耶！那本肥鱼接着嘿咻啦，主人看着哦。', '收到！这回本肥鱼先问清楚再动手嘛。', '嘿咻，本肥鱼早就等这句啦～'], 'work', 'happy'],
   ] },
   // 熬夜陪伴
-  night: { name: '陪伴', def: 'yawn', anims: ['yawn', 'headpat', 'peek', 'work', 'mutter'], buttons: [
+  night: { name: '陪伴', def: 'doze', anims: ['doze', 'yawn', 'headpat', 'peek', 'work', 'mutter'], buttons: [
     ['早点睡', ['主人先睡，本肥鱼就睡，说好了哦。', '嘿嘿，这话该本肥鱼说才对嘛。', '好嘛，那主人也答应本肥鱼，今晚早一点哦。'], 'yawn', 'sleepy'],
     ['你也辛苦', ['呜，主人还记得本肥鱼辛苦……不困了，真的。', '嘿嘿，陪主人不算辛苦，算加班嘛。', '有主人这句，本肥鱼还能再陪一晚哦。'], 'wag', 'happy'],
   ] },
@@ -63,23 +64,25 @@ EMOTIONS.scold = { name: '挨骂', def: 'curl', anims: ['curl', 'bury', 'sigh', 
   ['没事啦', ['呜，主人真好……那本肥鱼可以不躲着了吗？', '没事就好！本肥鱼悄悄松了口气哦。', '嘿嘿，主人不生气了，本肥鱼这就接着干活嘛。'], 'peek', 'happy'],
 ] }
 // 台词是在夸主人、谢主人的时候：按钮不该再让主人夸她
-EMOTIONS.thanks = { name: '夸主人', def: 'headpat', anims: ['headpat', 'wag', 'proud', 'peek', 'cheer'], buttons: [
+EMOTIONS.thanks = { name: '夸主人', fx: 'heart', def: 'headpat', anims: ['headpat', 'wag', 'proud', 'peek', 'cheer'], buttons: [
   ['你也辛苦了', ['呜，主人还记得本肥鱼辛苦……不累，一点都不累嘛。', '嘿嘿，陪主人干活不算辛苦，算福利哦。', '有主人这句，本肥鱼还能再干三百个活呀。'], 'wag', 'happy'],
   ['还好有你', ['呜呜，这句本肥鱼要折角，再贴上小红花哦。', '嘿嘿，主人再说一遍嘛，本肥鱼没听够。', '那主人以后也不许换鱼哦，说好了嘛。'], 'headpat', 'proud'],
 ] }
 
 /**
- * 情绪有转折的台词，动作跟着转：开头用这件事的动作（认错先缩成一团），说到落点（「嘿嘿」「保证」「听主人的」这类）时换成这个。
- * 没写的情绪不转。
+ * 每种类型的招牌姿势是这句话的主体动作，从头保持到尾。只有情绪真的有转折的（认错到最后「嘿嘿」「保证」），才在落点换成这个姿势。
+ * 没写的情绪不换姿势，落点最多在头顶冒一个特效（EMOTIONS[x].fx）。
  */
-export const TURN = { sorry: 'headpat', caught: 'peek', scold: 'peek', halt: 'peek', tally: 'mutter', brag: 'wag', night: 'headpat', eat: 'headpat' }
-/** 落点从哪个字开始：最后一小句里有落点的词，就从那一小句开头转；整句只有一小句、或者最后一小句没有落点，就不转（返回 -1） */
+export const TURN = { sorry: 'headpat' }
+/** 这句的情绪是不是真的转了：最后一小句里有「嘿嘿」「保证」这种从心虚转成讨好的词 */
+export const realTurn = text => { const at = turnAt(text); return at >= 0 && /嘿嘿|保证|下次|原谅/.test(String(text).slice(at)) }
+/** 落点从哪个字开始：最后一小句的开头；整句只有一小句就没有落点（返回 -1） */
 export function turnAt(text) {
   const t = String(text)
   const cuts = [...t.matchAll(/[。！？…\n]+/g)].map(m => m.index + m[0].length).filter(i => i < t.length - 1)
   if (!cuts.length) return -1
   const at = cuts.at(-1), last = t.slice(at)
-  return /嘿嘿|嘿咻|保证|好嘛|听主人|夸|谢谢|嘛|哦|呀|啦|～|吧/.test(last) ? at : -1
+  return last.trim() ? at : -1
 }
 /** 这句是不是在夸主人、谢主人 */
 export const praisesOwner = text => /(主人|你).{0,10}(功劳|磨出来|真好|脾气真好|真能忍|撑下来|厉害)|谢谢主人|辛苦主人|佩服/.test(String(text).replace(/「[^」]*」/g, ''))
@@ -92,4 +95,14 @@ export function fitAnim(emotion, anim) {
   const e = EMOTIONS[emotion]
   if (!e) return anim || null
   return anim && e.anims.includes(anim) ? anim : e.def
+}
+
+/**
+ * 一句台词每一拍的姿势：第一拍永远是这件事的招牌姿势（sig），模型另挑的不算；
+ * 第二拍只有情绪真的转了（认错到最后「嘿嘿」「保证」）才换成「转过来」的那个，否则和第一拍一样。
+ * @param {string} emotion @param {string} sig 招牌姿势 @param {{ t: string, a?: string|null }[]} beats @param {string} text 整句
+ */
+export function poseBeats(emotion, sig, beats, text) {
+  const turned = TURN[emotion] && realTurn(text) ? TURN[emotion] : sig
+  return beats.map((b, i) => ({ t: b.t, a: i === 0 ? sig : turned }))
 }
