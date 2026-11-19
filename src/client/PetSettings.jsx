@@ -64,24 +64,38 @@ function StyleSection({ onChanged }) {
   )
 }
 
-/** 自动更新：开关、上次什么时候跑的、用了多少 token、这个月累计、下次大概什么时候；暂停了写明原因 */
+/** 自动更新（按库存补货）：开关、库存还剩几条、上次补货时间、本月花了约多少钱；停了写明原因。永不冷场的几样接替来源也在这儿一样一样开关 */
 function AutoStatus({ a, onChange, onOpen }) {
+  const [, force] = useState(0)
   const time = ts => new Date(ts).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-  const n = v => (v || 0).toLocaleString()
+  const yuan = v => `${(v || 0).toFixed(2)} ${a.price.currency === 'CNY' ? '元' : a.price.currency}`
+  const fill = prefs.get().fill || {}
+  const setFill = (k, on) => { prefs.set({ fill: { ...fill, [k]: on } }); force(x => x + 1) }
+  const Box = ({ checked, onChange: oc, children }) => <label className="ay-small" style={{ display: 'block' }}><input type="checkbox" checked={checked} onChange={e => oc(e.target.checked)} /> {children}</label>
   return (
     <div style={{ marginTop: 14 }}>
       <h3 style={{ margin: '0 0 6px', fontSize: 14 }}>自动更新</h3>
-      <label className="ay-small" style={{ display: 'block' }}>
-        <input type="checkbox" checked={a.on} onChange={e => (e.target.checked ? onOpen() : call('auto.set', { on: false }).then(onChange))} /> 每周自己更新一回台词（dsh web 开着、你闲下来 10 分钟以上才跑；每次最多约 {n(a.caps.run)} token，每月最多约 {n(a.caps.month)}）
-      </label>
-      {a.on && <p className="ay-small ay-muted" style={{ margin: '6px 0 0' }}>
-        {a.running ? '正在写…' : a.last ? `上次：${time(a.last.at)}，用了 ${n(a.last.tokens)} token，新写 ${a.last.added} 件、换说法 ${a.last.rotated} 件${a.last.ok ? '' : `，没写成（${a.last.error}）`}` : '还没跑过'}
-        　本月累计：{n(a.monthTokens)} / {n(a.caps.month)} token
-        　下次：{a.paused ? '已暂停' : a.nextAt && a.nextAt > Date.now() ? `${time(a.nextAt)} 以后，等你闲下来` : '等你闲下来 10 分钟就跑'}
-      </p>}
+      <Box checked={a.on} onChange={on => (on ? onOpen() : call('auto.set', { on: false }).then(onChange))}>
+        让她自己攒着话说：没说过的台词少于 {a.target} 条、或者当天有新的事，就在你闲下来时补一批（每次最多约 {a.caps.run.toLocaleString()} token，每月最多约 {a.caps.monthYuan} 元，只用来防意外）
+      </Box>
+      <Box checked={a.avoidPeak} onChange={on => call('auto.set', { avoidPeak: on }).then(onChange)}>
+        补货尽量避开高峰时段（北京时间工作日 9～18 点；库存见底了就不等）
+      </Box>
+      <p className="ay-small" style={{ margin: '6px 0 0' }}>
+        库存：还有 <b>{a.stock ?? '…'}</b> 条没说过的台词
+        　上次补货：{a.running ? '正在补…' : a.last ? `${time(a.last.at)}，新写 ${a.last.added} 件、换说法 ${a.last.rotated} 件，其中 ${a.last.withButtons} 件带回话按钮，约 ${yuan(a.last.cost)}${a.last.ok ? '' : `，没写成（${a.last.error}）`}${a.last.note ? `（${a.last.note}）` : ''}` : '还没补过'}
+        　本月约 {yuan(a.monthCost)}{a.price.assumed ? '（没配这个模型的价格，按输入 2 元、输出 8 元每百万 token 估的）' : ''}
+      </p>
       {a.on && a.paused && <p className="ay-err ay-small" style={{ margin: '6px 0 0' }}>
         自动更新暂停了：{a.paused}　<button className="ay-btn" onClick={() => call('auto.resume').then(onChange)}>继续</button>
       </p>}
+      {a.on && a.capped && <p className="ay-err ay-small" style={{ margin: '6px 0 0' }}>自动更新停了：{a.capped}</p>}
+      <h3 style={{ margin: '14px 0 6px', fontSize: 14 }}>旧账都翻过以后，拿什么接着说</h3>
+      <Box checked={fill.idle !== false} onChange={on => setFill('idle', on)}>碎碎念</Box>
+      <Box checked={fill.today !== false} onChange={on => setFill('today', on)}>往年今日（上周、上个月的今天你在弄什么）</Box>
+      <Box checked={fill.stat !== false} onChange={on => setFill('stat', on)}>小账本（这一阵的总数）</Box>
+      <Box checked={fill.liked !== false} onChange={on => setFill('liked', on)}>点过 👍 的老台词</Box>
+      <p className="ay-small ay-muted" style={{ margin: '4px 0 0' }}>顺序：没说过的台词 → 换了说法的旧事 → 歇够 3 天的旧事 → 上面勾着的几样轮着来。「过两天再来嘛」一天最多说一次。</p>
     </div>
   )
 }

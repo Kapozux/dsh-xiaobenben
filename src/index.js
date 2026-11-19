@@ -31,8 +31,8 @@ export const Config = Schema.object({
   expensiveOutputPrice: Schema.number().default(0).description('输出价格（每百万 token）高于这个数就提示「可以换便宜的模型」；0 = 不提示'),
   electronPath: Schema.string().default('').description('大肥鱼桌面版用的 Electron.app 路径；空 = 自动找本机已有的，没有就下载'),
   electronMirror: Schema.string().default('').description('下载 Electron 用的镜像；空 = https://npmmirror.com/mirrors/electron/'),
-  autoRunTokens: Schema.number().default(60000).description('台词自动更新：每次最多用多少 token（主人开了自动更新才有用）'),
-  autoMonthTokens: Schema.number().default(250000).description('台词自动更新：每个月最多用多少 token'),
+  autoRunTokens: Schema.number().default(60000).description('台词自动补货：每次最多用多少 token（主人开了自动更新才有用；只用来防 bug）'),
+  autoMonthYuan: Schema.number().default(5).description('台词自动补货：每个月最多花多少钱（元，按 prices 里这个模型的价格算；没配价格就按输入 2 元、输出 8 元每百万 token 估）'),
   sensitiveExtra: Schema.dict(Schema.array(Schema.string())).default({}).description('额外的敏感词，按类：{ 健康: [...], 感情: [...], 成绩: [...], 家庭: [...] }'),
 })
 
@@ -67,10 +67,10 @@ export function apply(ctx, config = {}) {
     return { provider: s.provider, model: s.model }
   }
 
-  // 台词自动更新（主人选了才开）：dsh web 开着的时候每 5 分钟看一眼，够一周了、主人又闲着才跑。见 src/auto.js
+  // 台词自动补货（主人选了才开）：dsh web 开着的时候每 5 分钟看一眼库存，不到 20 条、主人又闲着才补。见 src/auto.js
   const auto = new Auto({
     pet, store, adapter, route: currentRoute, isRunning: () => !!styler.job,
-    caps: { run: config.autoRunTokens, month: config.autoMonthTokens },
+    prices: config.prices || [], caps: { run: config.autoRunTokens, monthYuan: config.autoMonthYuan },
     activity: async () => { const n = await pet.now(); return { busy: (n.busy || []).length > 0, lastAt: n.lastAt || 0 } },
   })
   const autoTimer = setInterval(() => auto.tick().catch(err => console.warn('[dsh-xiaobenben] 自动更新出错', err)), 5 * 60e3)
@@ -125,14 +125,14 @@ export function apply(ctx, config = {}) {
       return styler.start({ route: body.route || currentRoute(), hash: body.hash, redo: !!body.redo })
     },
     async 'style.status'() {
-      return { ...(await styler.status()), auto: auto.status() }
+      return { ...(await styler.status()), auto: await auto.status() }
     },
-    // 自动更新：开 / 关（开的时候不立刻跑，除非带 now：第一次选「自动更新」那一下先写一批）、暂停后继续
+    // 自动补货：开 / 关、要不要避开高峰（带 now：第一次选「自动更新」那一下先补一批）、暂停后继续
     async 'auto.set'(body) {
-      const st = auto.set(body.on === true)
+      auto.set({ on: typeof body.on === 'boolean' ? body.on : undefined, avoidPeak: typeof body.avoidPeak === 'boolean' ? body.avoidPeak : undefined })
       if (body.on === true) styler.answer('yes')
-      if (body.on === true && body.now === true && !styler.job) auto.run().catch(err => console.warn('[dsh-xiaobenben] 自动更新出错', err))
-      return { ...st, running: body.on === true && body.now === true }
+      if (body.on === true && body.now === true && !styler.job) auto.run().catch(err => console.warn('[dsh-xiaobenben] 自动补货出错', err))
+      return auto.status()
     },
     async 'auto.resume'() {
       return auto.resume()

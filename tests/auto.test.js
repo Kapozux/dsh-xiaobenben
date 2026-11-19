@@ -1,49 +1,43 @@
-// 台词自动更新：选了才开、每周一次、只做增量、每次和每月有上限、忙的时候不跑、连续失败两次暂停、跑完只记一笔等主人来点。
+// 台词自动补货：选了才开；库存不到 20 条或当天有新事就补；忙的时候、高峰时段不补；每次 6 万 token、每月约 5 元封顶；连续失败两次暂停。
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { Auto, WEEK, IDLE, ROTATE } from '../src/auto.js'
+import { Auto, TARGET, FILL_TO, IDLE, GAP, RETRY_AFTER, FALLBACK_PRICE, isPeak } from '../src/auto.js'
 import { Store } from '../src/store.js'
 import { normFeedback, REST } from '../src/shared/feedback.js'
 
 const DAY = 864e5
-const T0 = new Date(2026, 10, 19, 15, 0).getTime()
+const T0 = new Date(2026, 10, 21, 22, 0).getTime()           // 周六晚上：不是高峰
 const card = (i, daysAgo) => ({ kind: 'complain', event: 'complain', ts: T0 - daysAgo * DAY, sensitive: [],
   card: { id: 'c' + i, kind: 'complain', event: 'complain', rel: '上个月', said: '还是不行', fact: `上个月，主人对本肥鱼干的活不满意，说了「还是不行」（第 ${i} 件）` } })
-// 每件事的台词各不相同（同一批里短句不许重样），数字只用卡片里有的那个编号
-const lineFor = id => `第 ${id.slice(1)} 件嘛，主人，本肥鱼记好第 ${id.slice(1)} 件啦～`
-/** 假模型：每张卡写一版、挑第一版、不写回话。calls 记下每次发了哪些卡 */
-function fakeAdapter({ fail = false, usage = { inputTokens: 500, outputTokens: 300 } } = {}) {
-  const calls = []
+// 每件事的台词各不相同（同一批里短句不许重样），数字只用卡片里有的那个编号；v 区分第几次写
+const lineFor = (id, v) => `第 ${id.slice(1)} 件嘛，主人，本肥鱼${v ? '重新' : ''}记好第 ${id.slice(1)} 件啦～`
+function setup({ moments, caps, prices, fail = false, usage = { inputTokens: 500, outputTokens: 300 }, activity = { busy: false, lastAt: 0 } } = {}) {
+  const store = new Store(path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'xbb-auto-')), 'state.json'))
+  const clock = { now: T0 }, calls = [], state = { activity, moments, shown: {}, fail }
   const adapter = async ({ system, prompt }) => {
     const ids = [...new Set([...prompt.matchAll(/id=(\w+)/g)].map(m => m[1]))]
     const stage = system.includes('挑出最好的一版') ? 'pick' : system.includes('写 3 个按钮') ? 'options' : system.includes('检查每一组') ? 'check' : 'write'
-    calls.push({ stage, ids })
-    if (fail) throw new Error('503 服务不可用')
-    const text = stage === 'write' ? { lines: ids.map(id => ({ id, texts: [{ beats: [{ t: lineFor(id), a: '委屈' }] }] })) }
+    calls.push({ stage, ids, prompt })
+    if (state.fail) throw new Error('503 服务不可用')
+    const text = stage === 'write' ? { lines: ids.map(id => ({ id, texts: [{ beats: [{ t: lineFor(id, /旧说法/.test(prompt)), a: '委屈' }] }] })) }
       : stage === 'pick' ? { picks: ids.map(id => ({ id, best: 1, bad: [] })) } : stage === 'options' ? { branches: [] } : { checks: [] }
     return { text: JSON.stringify(text), usage }
   }
-  return { adapter, calls }
+  const auto = new Auto({ pet: { moments: async () => ({ moments: state.moments }) }, store, adapter, route: () => ({ provider: 'p', model: 'm' }),
+    activity: async () => state.activity, shown: () => state.shown, caps, prices, now: () => clock.now })
+  return { auto, store, clock, state, calls }
 }
-function setup({ moments, caps, fail, usage, activity = { busy: false, lastAt: 0 } } = {}) {
-  const store = new Store(path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'xbb-auto-')), 'state.json'))
-  const clock = { now: T0 }
-  const fake = fakeAdapter({ fail, usage })
-  const state = { activity, moments }
-  const auto = new Auto({ pet: { moments: async () => ({ moments: state.moments }) }, store, adapter: fake.adapter, route: () => ({ provider: 'p', model: 'm' }),
-    activity: async () => state.activity, caps, now: () => clock.now })
-  return { auto, store, clock, state, calls: fake.calls }
-}
+const many = (n, daysAgo = 3) => Array.from({ length: n }, (_, i) => card(i + 1, daysAgo + (i % 4)))
 
-test('没选就不开；开了也得等：正在派活不跑，刚派过活等闲下来 10 分钟，一周只跑一次', async () => {
-  const { auto, store, clock, state, calls } = setup({ moments: [card(1, 1), card(2, 2)] })
+test('没选就不开；开了也得等：正在派活不补，刚派过活等闲下来 10 分钟，高峰时段尽量不补', async () => {
+  const { auto, clock, state, calls } = setup({ moments: many(8) })
   assert.equal(await auto.tick(), 'off')
   assert.equal(calls.length, 0)
-  assert.equal(auto.status().on, false)
-  auto.set(true)
+  assert.equal((await auto.status()).on, false)
+  auto.set({ on: true })
   state.activity = { busy: true, lastAt: T0 }
   assert.equal(await auto.tick(), 'busy')
   state.activity = { busy: false, lastAt: T0 - IDLE + 60e3 }
@@ -51,93 +45,128 @@ test('没选就不开；开了也得等：正在派活不跑，刚派过活等�
   assert.equal(calls.length, 0)
   state.activity = { busy: false, lastAt: T0 - IDLE - 1 }
   assert.equal(await auto.tick(), 'ran')
-  assert.deepEqual(Object.keys(store.read().styled).sort(), ['c1', 'c2'])
-  const st = auto.status()
-  assert.equal(st.last.ok, true)
-  assert.equal(st.last.added, 2)
-  assert.ok(st.last.tokens > 0 && st.monthTokens === st.last.tokens)
-  assert.equal(st.nextAt, T0 + WEEK)
-  assert.equal(st.news, 2)                                   // 不弹窗，记一笔等主人来点
-  assert.equal(auto.takeNews(), 2)
-  assert.equal(auto.takeNews(), 0)                           // 只说一次
-  clock.now = T0 + WEEK - 60e3
-  assert.equal(await auto.tick(), 'not-due')
-  auto.set(false)                                            // 设置里随时能关
-  clock.now = T0 + 2 * WEEK
+  const st = await auto.status()
+  assert.equal(st.stock, 8)                                  // 写好了、还没说过的有 8 条
+  assert.equal(st.last.added, 8)
+  assert.equal(st.news, 8)                                   // 不弹窗，记一笔等主人来点
+  assert.equal(auto.takeNews(), 8)
+  assert.equal(auto.takeNews(), 0)
+  assert.equal(await auto.tick(), 'just-ran')                // 刚补过，隔一阵再看
+  auto.set({ on: false })                                    // 设置里随时能关
+  clock.now = T0 + DAY
   assert.equal(await auto.tick(), 'off')
+
+  // 高峰（北京时间工作日白天）：库存还有就等；设置里关掉「避开高峰」就不等；库存见底了也不等
+  assert.equal(isPeak(new Date('2026-11-23T03:00:00Z').getTime()), true)       // 周一 11:00 北京时间
+  assert.equal(isPeak(new Date('2026-11-23T14:00:00Z').getTime()), false)      // 周一 22:00
+  assert.equal(isPeak(new Date('2026-11-21T03:00:00Z').getTime()), false)      // 周六
+  const peak = setup({ moments: many(8) })
+  peak.auto.set({ on: true })
+  await peak.auto.run()
+  peak.clock.now = new Date('2026-11-23T03:00:00Z').getTime()
+  assert.equal(await peak.auto.tick(), 'nothing')                                // 库存 8 条不到 20，但没有能写的事了：不空转
+  for (const id of ['c1', 'c2', 'c3']) peak.state.shown[id] = [1, peak.clock.now]  // 翻掉 3 条：有旧事可以换说法了
+  assert.equal(await peak.auto.tick(), 'peak')                                   // 高峰，库存还有 5 条：等
+  peak.auto.set({ avoidPeak: false })
+  assert.equal(await peak.auto.tick(), 'ran')                                    // 设置里关掉「避开高峰」就不等
+  const dry = setup({ moments: many(4) })
+  dry.auto.set({ on: true })
+  dry.clock.now = new Date('2026-11-23T03:00:00Z').getTime()
+  assert.equal(await dry.auto.tick(), 'ran')                                     // 库存见底了，高峰也补
 })
 
-test('只做增量：这周新的事 + 轮换 5 件写过的旧事；已经写过的不重写；私事不发', async () => {
-  const old = Array.from({ length: 8 }, (_, i) => card(i + 1, 20 + i))
-  const { auto, store, clock, state, calls } = setup({ moments: old })
-  auto.set(true)
-  await auto.run()
-  assert.equal(Object.keys(store.read().styled).length, 8)
-  // 一周以后：多了两件新的（一件是私事）
-  clock.now = T0 + WEEK + 1
-  state.moments = [...old.map(m => ({ ...m })), { ...card(9, -6), sensitive: [] }, { ...card(10, -6), sensitive: ['家庭'] }]
+test('库存不到 20 条就补：没写过的优先，不够再给说过的旧事换个说法；说过的不算库存', async () => {
+  const { auto, store, clock, state, calls } = setup({ moments: many(20) })
+  auto.set({ on: true })
+  assert.equal(await auto.tick(), 'ran')
+  assert.equal((await auto.status()).stock, 20)              // 一次把 20 件都写了（没到每次的上限）
+  clock.now += GAP + 1
+  assert.equal(await auto.tick(), 'stocked')                 // 库存够，不补
+  // 主人这几天翻掉了 10 条：库存剩 10，低于 20
+  for (let i = 1; i <= 10; i++) state.shown['c' + i] = [1, clock.now]
+  clock.now += 60e3
+  assert.equal((await auto.status()).stock, 10)
   calls.length = 0
   assert.equal(await auto.tick(), 'ran')
-  const sent = new Set(calls.filter(c => c.stage === 'write').flatMap(c => c.ids))
-  assert.ok(sent.has('c9'))
-  assert.ok(!sent.has('c10'))                                // 私事不发
-  assert.equal(sent.size, 1 + ROTATE)                        // 新的 1 件 + 轮换 5 件
-  const last = auto.status().last
-  assert.equal(last.added, 1)
-  assert.equal(last.rotated, ROTATE)
-  assert.equal(auto.status().news, 8 + 1)                    // 只把新写的算进「新记了几件」：第一次 8 件，这次 1 件，轮换的不算
+  const write = calls.filter(c => c.stage === 'write')
+  const sent = new Set(write.flatMap(c => c.ids))
+  assert.equal(sent.size, 10)                                // 没有没写过的了：给说过的那 10 件换说法
+  assert.ok([...sent].every(id => +id.slice(1) <= 10))
+  assert.match(write[0].prompt, /以前写过、主人已经听过了/)
+  assert.match(write[0].prompt, /id=c1 旧说法：第 1 件嘛，主人，本肥鱼记好第 1 件啦～/)
+  const st = await auto.status()
+  assert.equal(st.last.rotated, 10)
+  assert.equal(st.stock, 20)                                 // 换了说法的又算没说过
+  assert.match(store.read().styled.c1[0].text, /重新记好/)
+  // 当天有新的事：库存够也补
+  clock.now += GAP + 1
+  state.moments = [...state.moments, { ...card(99, 0), ts: clock.now - 3600e3 }]
+  calls.length = 0
+  assert.equal(await auto.tick(), 'ran')
+  assert.deepEqual([...new Set(calls.filter(c => c.stage === 'write').flatMap(c => c.ids))], ['c99'])
+  // 私事不发
+  clock.now += GAP + 1
+  state.moments = [...state.moments, { ...card(100, 0), ts: clock.now - 60e3, sensitive: ['家庭'] }]
+  assert.equal(await auto.tick(), 'stocked')
 })
 
-test('每次有上限：按估算挑到上限为止；每月有上限：这个月用完了就不再调模型', async () => {
-  const many = Array.from({ length: 30 }, (_, i) => card(i + 1, 1 + i % 5))
-  const small = setup({ moments: many, caps: { run: 25000, month: 250000 } })
-  small.auto.set(true)
+test('上限只用来防 bug：每次最多 6 万 token（估算和实际各卡一道），每月最多约 5 元；触顶就停并写明原因', async () => {
+  const small = setup({ moments: many(40), caps: { run: 25000 } })
+  small.auto.set({ on: true })
   const plan = await small.auto.plan()
-  assert.ok(plan.cards.length >= 1 && plan.cards.length < 30)
-  assert.ok(plan.estimate <= 25000)
-  await small.auto.run()
-  assert.ok(Object.keys(small.store.read().styled).length < 30)          // 剩下的以后每周补
+  assert.ok(plan.cards.length >= 1 && plan.cards.length < 40 && plan.estimate <= 25000)
 
-  const month = setup({ moments: many, caps: { run: 60000, month: 12000 }, usage: { inputTokens: 900, outputTokens: 300 } })
-  month.auto.set(true)
-  await month.auto.run()                                                   // 月额度只够写一两件
-  const used = month.auto.status().monthTokens
-  assert.ok(used > 0 && used <= 12000)
-  assert.ok(Object.keys(month.store.read().styled).length <= 3)
-  for (let d = 1; d <= 9; d++) { month.clock.now = T0 + d * DAY; await month.auto.run() }       // 这个月里接着硬跑九次
-  assert.ok(month.auto.status().monthTokens <= 12000 + 1200)             // 这个月怎么跑都不超过月上限（最多多出正在路上的那一次调用）
-  const left = 12000 - month.auto.status().monthTokens
-  assert.ok((await month.auto.plan()).estimate <= Math.max(0, left))
-  month.clock.now = new Date(2026, 11, 2, 10, 0).getTime()                 // 下个月重新算
-  assert.equal(month.auto.status().monthTokens, 0)
+  // 模型报的用量比估的大很多：第一次调用就超了这一次的上限，后面的不发
+  const big = setup({ moments: many(30), usage: { inputTokens: 50000, outputTokens: 20000 } })
+  big.auto.set({ on: true })
+  await big.auto.run()
+  assert.equal(big.calls.length, 1)
+
+  // 每月 5 元：没配价格按 输入 2 / 输出 8 元每百万 token 估
+  assert.deepEqual({ input: FALLBACK_PRICE.input, output: FALLBACK_PRICE.output }, { input: 2, output: 8 })
+  const m = setup({ moments: many(30), usage: { inputTokens: 300000, outputTokens: 600000 }, caps: { run: 60000, monthYuan: 5 } })
+  m.auto.set({ on: true })
+  await m.auto.run()                                         // 一次调用就是 0.6 + 4.8 = 5.4 元
+  let st = await m.auto.status()
+  assert.ok(st.monthCost >= 5)
+  assert.equal(st.price.assumed, true)
+  assert.match(st.capped, /到了每月 5 元的上限/)
+  m.clock.now += GAP + 1
+  m.calls.length = 0
+  assert.equal(await m.auto.tick(), 'capped')
+  assert.equal(m.calls.length, 0)
+  m.clock.now = new Date(2026, 11, 2, 22, 0).getTime()       // 下个月重新算
+  st = await m.auto.status()
+  assert.equal(st.monthCost, 0)
+  assert.equal(st.capped, null)
+  // 配了价格就按配置的算
+  const p = setup({ moments: many(3), prices: [{ provider: 'p', model: 'm', input: 1, output: 2, currency: 'CNY' }], usage: { inputTokens: 1000000, outputTokens: 0 } })
+  p.auto.set({ on: true })
+  await p.auto.run()
+  assert.equal((await p.auto.status()).price.assumed, false)
+  assert.ok(Math.abs((await p.auto.status()).last.cost - p.calls.length * 1) < 1e-9)
 })
 
-test('实际用量再卡一道：模型报的用量比估的大很多时，超过这一次的上限就停', async () => {
-  const many = Array.from({ length: 30 }, (_, i) => card(i + 1, 1))
-  const { auto, calls } = setup({ moments: many, caps: { run: 60000, month: 250000 }, usage: { inputTokens: 50000, outputTokens: 20000 } })
-  auto.set(true)
-  await auto.run()
-  assert.equal(calls.length, 1)                                            // 第一次调用就超了，后面的都不发
-  assert.ok(auto.status().last.tokens >= 60000)
-})
-
-test('连续失败 2 次就暂停，原因写在状态里；点「继续」才再跑', async () => {
-  const { auto, clock, calls } = setup({ moments: [card(1, 1)], fail: true })
-  auto.set(true)
+test('连续失败 2 次就暂停，原因写在状态里，点「继续」才再补；同一件事连着两次没写成，7 天内不再试', async () => {
+  const { auto, clock, state, calls } = setup({ moments: many(3), fail: true })
+  auto.set({ on: true })
   assert.equal(await auto.tick(), 'ran')
-  assert.equal(auto.status().paused, null)
-  assert.equal(auto.status().last.ok, false)
-  clock.now = T0 + WEEK + 1
+  assert.equal((await auto.status()).paused, null)
+  clock.now += GAP + 1
   assert.equal(await auto.tick(), 'ran')
-  assert.match(auto.status().paused, /连续 2 次没写成：.*503/)
-  assert.equal(auto.status().nextAt, null)
-  clock.now = T0 + 3 * WEEK
+  assert.match((await auto.status()).paused, /连续 2 次没写成：.*503/)
+  clock.now += DAY
   const before = calls.length
   assert.equal(await auto.tick(), 'paused')
   assert.equal(calls.length, before)
   auto.resume()
-  assert.equal(auto.status().paused, null)
+  state.fail = false
+  // 那 3 件事已经连着两次没写成：7 天内不再试，所以没有能写的
+  assert.equal((await auto.plan()).cards.length, 0)
+  clock.now += RETRY_AFTER + 1
+  assert.equal((await auto.plan()).cards.length, 3)
   assert.equal(await auto.tick(), 'ran')
+  assert.equal((await auto.status()).stock, 3)
 })
 
 test('防重复：每件事翻过几次、上次什么时候翻的都记着（网页和桌面共用），至少隔 3 天再翻', () => {
@@ -145,4 +174,5 @@ test('防重复：每件事翻过几次、上次什么时候翻的都记着（�
   const fb = normFeedback({ shown: { c1: [2, T0], bad: 'x', c2: [1, -5], c3: [1.6, T0 - DAY] } })
   assert.deepEqual(fb.shown, { c1: [2, T0], c3: [2, T0 - DAY] })
   assert.deepEqual(normFeedback({}).shown, {})
+  assert.ok(TARGET === 20 && FILL_TO > TARGET)
 })

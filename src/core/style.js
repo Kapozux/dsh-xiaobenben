@@ -319,10 +319,11 @@ export function checkOption(card, opt, line = '') {
  *   写（每件事 5 版，程序核对，没过的带原因再写一次）→ 挑（模型挑一版，顺带查主语说反、编细节）
  *   → 写回话（给选中的那版写 3 个按钮和接的话，程序核对）→ 查回话（模型查程序查不了的）。
  * 后两步出了问题（没写出来、核对不过、剩下不到 2 个按钮、调用失败）不影响台词本身：那件事的 options 是空的，界面上用按类型配的默认按钮。
+ * avoid：{ 事件 id: 上次那句 }，这些事是换说法，把旧的给模型看、让它别写成一样的。
  * @returns {Promise<{ lines: Record<string, any[]>, failed: { id: string, why: string }[], dropped: number, errors: string[], usage: any[], picks: Record<string, any>, branches: Record<string, any> }>}
  *   lines：每件事最后选中的那一版 [{ text, anim, beats, options }]；failed：没写成的事和原因（照旧说模板的）；dropped：程序核对扔掉的版本数
  */
-export async function styleRun({ adapter, cards, route, signal, onProgress = () => {} }) {
+export async function styleRun({ adapter, cards, route, signal, onProgress = () => {}, avoid = {} }) {
   const errors = [], usage = []
   const cand = {}                                  // id → 过了程序核对的候选 { text, beats }
   let dropped = 0, done = 0
@@ -352,6 +353,9 @@ export async function styleRun({ adapter, cards, route, signal, onProgress = () 
       if (signal?.aborted) { out.push(...batch.map(c => ({ id: c.id, why: '已停止', text: null }))); continue }
       let { system, prompt } = buildStylePrompt(batch)
       if (notes) prompt += `\n\n这几张上一遍写的都没过检查，原因如下，这次照着改：\n${batch.map(c => `id=${c.id}：${notes[c.id]}`).join('\n')}`
+      // 以前写过、已经对主人说过的事：这次换个角度，别和上次那句一样
+      const again = batch.filter(c => avoid[c.id])
+      if (again.length) prompt += `\n\n这几件事以前写过、主人已经听过了。这次换一个角度、换一种开头和落点，不要和旧说法像：\n${again.map(c => `id=${c.id} 旧说法：${avoid[c.id]}`).join('\n')}`
       const got = await ask(system, prompt, batch.length * 620 + 300, 'lines')
       const byId = new Map((got || []).map(l => [String(l?.id), (Array.isArray(l?.texts) ? l.texts : l?.text ? [l.text] : []).map(beatsOf)]))
       for (const c of batch) {

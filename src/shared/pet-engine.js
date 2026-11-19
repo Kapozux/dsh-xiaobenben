@@ -494,6 +494,7 @@ export function createPet(host, opts) {
   // ---------- 说话 ----------
   let data = null, inflight = null
   const queues = {}
+  let fillAt = 0                               // 旧账都翻过以后，轮到哪一种话来接
   // 反馈：共用一份（opts.feedback.load / save），没有就只记在这只的偏好里
   let fb = emptyFeedback(), fbTimer = 0
   Promise.resolve(opts.feedback?.load?.()).then(d => {
@@ -847,23 +848,35 @@ export function createPet(host, opts) {
     if (d.news > 0) { const n = d.news; d.news = 0; flipStop(); return say({ text: `本肥鱼新记了 ${n} 件事哦～\n主人再点一下，翻给你看嘛。`, anim: 'proud', landFx: 'sparkle' }) }
     const pr = opts.prefs.get()
     const f = MODES.find(m => m[0] === pr.mode)?.[2] || (() => true)
-    const qk = (pr.mode || 'all') + (pr.priv === false ? 0 : 1)
-    if (!queues[qk]?.length) {
-      // 带权重洗牌：👍 多的那一类更常出现，👎 多的少出现（加权蓄水池抽样的 key = u^(1/w)，大的先出）
-      // 👎 过的那一件不再翻；👍 过的那一件权重再乘 3
-      const w = m => { const [u, dn] = fb.kinds[m.kind] || [0, 0]; return (1 + u) / (1 + dn * 2) * ((fb.lines[m.text] || 0) > 0 ? 3 : 1) }
-      // 同一件事翻过以后至少隔 3 天再翻（记在反馈里，刷新页面、换到桌面也算数）；翻得少的排前面
-      const rested = m => !(fb.shown[m.card?.id] && Date.now() - fb.shown[m.card.id][1] < REST)
-      const all = d.moments.filter(m => f(m) && (pr.priv === false || !m.sensitive.length) && !((fb.lines[m.text] || 0) < 0))
-      queues[qk] = all.filter(rested)
-        .map(m => [Math.random() ** (1 / (w(m) / (1 + (fb.shown[m.card?.id]?.[0] || 0)))), m]).sort((a, b) => a[0] - b[0]).map(x => x[1])
-      if (!queues[qk].length && all.length) return say({ text: '这几天能翻的旧账本肥鱼都翻过啦，过两天再来嘛～', anim: 'coax', emo: 'coax', landFx: 'heart' })
+    // 永远有话说。接替顺序：没说过的（模型写的在前）→ 换了说法的旧事 → 歇够 3 天的旧事 → 碎碎念 → 往年今日 → 小账本 → 点过 👍 的老台词。
+    // 后面四样轮着来（设置里能一样一样关）；「过两天再来嘛」一天最多说一次。
+    const w = m => { const [u, dn] = fb.kinds[m.kind] || [0, 0]; return (1 + u) / (1 + dn * 2) * ((fb.lines[m.text] || 0) > 0 ? 3 : 1) }
+    const draw = list => list.map(m => [Math.random() ** (1 / w(m)), m]).sort((a, b) => b[0] - a[0])[0]?.[1] || null
+    const cand = d.moments.filter(m => f(m) && (pr.priv === false || !m.sensitive.length) && !((fb.lines[m.text] || 0) < 0))
+    const seen = m => fb.shown[m.card?.id]
+    const age = m => (seen(m) ? Date.now() - seen(m)[1] : Infinity)
+    const never = cand.filter(m => !seen(m))
+    const reworded = cand.filter(m => seen(m) && m.lineAt && seen(m)[1] < m.lineAt)          // 说过，但后来换了说法
+    const rested = cand.filter(m => seen(m) && !(m.lineAt && seen(m)[1] < m.lineAt) && age(m) >= REST)
+    const m = draw(never.filter(x => x.styled)) || draw(never) || draw(reworded) || draw(rested)
+    if (m) return sayMoment(m)
+    if (!d.moments.length) return say({ text: '本肥鱼还没跟主人一起干过活呢。派点活给本肥鱼？', anim: 'poke' })
+    // 都翻过了：一天只说一次「过两天再来」，之后就拿别的话接上，不冷场
+    const today = new Date().toDateString()
+    if (pr.dryDay !== today) { opts.prefs.set({ dryDay: today }); return say({ text: '这几天能翻的旧账本肥鱼都翻过啦，过两天再来嘛～', anim: 'coax', emo: 'coax', landFx: 'heart' }) }
+    const fill = pr.fill || {}, DAY = 864e5
+    const sources = [
+      ['idle', () => { const l = pickIdle(); return l && (() => sayIdle(l)) }],
+      ['today', () => { const x = draw(cand.filter(m => m.event === 'stat_today' && age(m) >= DAY)); return x && (() => sayMoment(x)) }],
+      ['stat', () => { const x = draw(cand.filter(m => m.kind === 'stat' && m.event !== 'stat_today' && age(m) >= DAY)); return x && (() => sayMoment(x)) }],
+      ['liked', () => { const x = draw(cand.filter(m => (fb.lines[m.text] || 0) > 0 && age(m) >= DAY)); return x && (() => sayMoment(x)) }],
+    ].filter(([k]) => fill[k] !== false)
+    for (let n = 0; n < sources.length; n++) {
+      const go = sources[(fillAt + n) % sources.length][1]()
+      if (go) { fillAt = (fillAt + n + 1) % sources.length; return go() }
     }
-    const m = queues[qk].pop()
-    if (!m) {
-      return say({ text: d.moments.length ? '这一类本肥鱼想不起来了……右键换一类？' : '本肥鱼还没跟主人一起干过活呢。派点活给本肥鱼？', anim: 'poke' })
-    }
-    sayMoment(m)
+    const any = draw(cand)                              // 四样都关了、或者都没得说：翻一件最久没翻的旧账
+    return any ? sayMoment([...cand].sort((a, b) => age(b) - age(a))[0]) : say({ text: '这一类本肥鱼想不起来了……右键换一类？', anim: 'poke' })
   }
   function sayMoment(m) {
     ctx.moment = { kind: m.kind, t: Date.now() }

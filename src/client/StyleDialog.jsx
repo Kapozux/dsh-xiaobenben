@@ -30,9 +30,9 @@ export function StyleDialog({ redo, auto = false, onClose, onStarted }) {
   return (
     <div className="ay-modal" onClick={e => e.target === e.currentTarget && !sending && onClose()}>
       <div className="ay-dialog" role="dialog" aria-label="发送前确认">
-        <h2>{auto ? '让本肥鱼每周自己更新台词？' : '让本肥鱼用你的模型写一批台词？'}</h2>
+        <h2>{auto ? '让本肥鱼自己攒着话说？（自动更新）' : '让本肥鱼用你的模型写一批台词？'}</h2>
         {auto
-          ? <p className="ay-muted">开了以后，dsh web 开着、你闲下来 10 分钟以上时，她每周自己写一回：这周新的事，再给 5 件旧事换个说法。<b>每次最多约 {caps ? caps.run.toLocaleString() : '…'} token，每月最多约 {caps ? caps.month.toLocaleString() : '…'} token</b>，连续两次没写成就自己停下。随时能在「设置 → 年度回顾 → 翻旧账」里关。现在点开启，会先写第一批（同样不超过每次的上限，下面那个总数是全部写完要用的，会分几周补齐）。</p>
+          ? <p className="ay-muted">开了以后，她自己保持至少 20 条没说过的台词：少于 20 条、或者当天有新的事，就在你闲下来时补一批（dsh web 开着、没有活在跑、你最后一次派活在 10 分钟以前，并尽量避开高峰时段）。新的事优先，不够再给说过的旧事换个说法。<b>每次补货最多约 {caps ? caps.run.toLocaleString() : '…'} token，每月最多约 {caps ? caps.monthYuan : '…'} 元</b>，触顶就停；连续两次没写成也会自己停下。随时能在「设置 → 年度回顾 → 翻旧账」里关。现在点开启会先补第一批（下面那个总数是全部写完要用的，她不会一次写完）。</p>
           : <p className="ay-muted">{redo ? '全部重写一遍。' : '只写本子里还没有的事。'}写好存在本机，之后点她只从本机抽，不再调模型。不发也行，她照模板念。</p>}
         <p className="ay-small"><b>会发送事发前后的几句对话</b>（你说的和它回的原文，每件事不超过 300 字），外加程序算出来的事实。都打过码；涉及健康、感情、成绩、家庭的事整件不发。</p>
         <div className="ay-field">

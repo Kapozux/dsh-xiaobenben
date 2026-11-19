@@ -55,7 +55,7 @@ export function Pet() {
       }, 2000)
     }
     api.current = {
-      started: auto => { setDialog(null); engine.say({ text: auto ? '好嘞，本肥鱼以后每周自己记一回。\n这就先去写第一批～' : '本肥鱼去写了，写好叫你。', anim: 'file' }); watchRun() },
+      started: auto => { setDialog(null); engine.say({ text: auto ? '好嘞，以后本肥鱼自己攒着话说。\n这就先去写第一批～' : '本肥鱼去写了，写好叫你。', anim: 'file' }); watchRun() },
       declined: () => { setDialog(null); if (!style?.asked) call('style.answer', { answer: 'no' }).then(refreshStyle) },
     }
     const ask = setTimeout(async () => {
@@ -66,7 +66,7 @@ export function Pet() {
       engine.say({
         text: '让本肥鱼用你的模型写台词？\n不写也行，本肥鱼照老本子念。', anim: 'file',
         // 自动更新只有主人在这儿（或设置里）选了才开
-        buttons: [['自动更新（每周）', () => setDialog('auto')], ['只这一次', () => setDialog('once')], ['不用', () => { call('style.answer', { answer: 'no' }).then(refreshStyle); engine.say({ text: '好，本肥鱼照本子念。想换了右键找我。', anim: 'bow' }) }]],
+        buttons: [['自动更新（推荐）', () => setDialog('auto')], ['只这一次', () => setDialog('once')], ['不用', () => { call('style.answer', { answer: 'no' }).then(refreshStyle); engine.say({ text: '好，本肥鱼照本子念。想换了右键找我。', anim: 'bow' }) }]],
       })
     }, 6000)
     const syncDesktop = d => { host.style.display = d?.desktop?.on ? 'none' : '' }
