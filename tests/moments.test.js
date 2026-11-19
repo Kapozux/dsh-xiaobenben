@@ -349,3 +349,13 @@ test('情绪有转折的台词动作跟着转；夸主人的台词换一组按�
   assert.equal(stop(45, 'b').card.len, 'long')
   assert.match(stop(45, 'b').card.fact, /已经干了很久（45 分钟）/)
 })
+
+test('存反馈：别处翻过的事并进来，不被后存的那一份盖掉', async () => {
+  const { mergeShown } = await import('../src/shared/feedback.js')
+  const disk = { shown: { a: [2, 2000], b: [1, 500] }, lines: { 旧: 1 } }
+  const mine = { shown: { a: [1, 3000], c: [1, 100] }, lines: { 新: -1 } }
+  const out = mergeShown(mine, disk)
+  assert.deepEqual(out.shown, { a: [2, 3000], c: [1, 100], b: [1, 500] })
+  assert.deepEqual(out.lines, { 新: -1 })                    // 👍👎 还是以这一份为准（要能撤销）
+  assert.deepEqual(mergeShown(mine, null).shown, { a: [1, 3000], c: [1, 100] })
+})

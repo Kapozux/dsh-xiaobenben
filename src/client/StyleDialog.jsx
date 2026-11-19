@@ -50,7 +50,7 @@ export function StyleDialog({ redo, auto = false, onClose, onStarted }) {
           <div className="ay-quote-nums">
             <div><b>{q.count}</b><span>件事（{q.withContext} 件带对话原文），每件写 5 版挑 1 版，再写 3 个回话按钮，共调 {q.calls} 次</span></div>
             <div><b>≈ {(q.inputTokens + q.outputTokens).toLocaleString()}</b><span>token（估算，输入 {q.inputTokens.toLocaleString()}）</span></div>
-            <div>{q.cost ? <><b>≈ {q.cost.amount < 0.01 ? q.cost.amount.toFixed(4) : q.cost.amount.toFixed(2)} {q.cost.currency}</b><span>按你配置的价格</span></> : <><b>—</b><span>没配置这个模型的价格，只显示 token</span></>}</div>
+            <div>{q.cost ? <><b>≈ {q.cost.amount < 0.01 ? q.cost.amount.toFixed(4) : q.cost.amount.toFixed(2)} {q.cost.currency}</b><span>{q.cost.note || '按你配置的价格'}</span></> : <><b>—</b><span>没配置这个模型的价格，只显示 token</span></>}</div>
           </div>
           {q.sample?.length > 0 && <>
             <p className="ay-small" style={{ margin: '10px 0 4px' }}>发出去的长这样（这是其中 {q.sample.length} 件）：</p>

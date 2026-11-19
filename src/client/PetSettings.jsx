@@ -81,10 +81,12 @@ function AutoStatus({ a, onChange, onOpen }) {
       <Box checked={a.avoidPeak} onChange={on => call('auto.set', { avoidPeak: on }).then(onChange)}>
         补货尽量避开高峰时段（北京时间工作日 9–12 点、14–18 点；其余时间和周末都算空闲；库存见底了就不等）
       </Box>
-      <p className="ay-small" style={{ margin: '6px 0 0' }}>
-        库存：还有 <b>{a.stock ?? '…'}</b> 条没说过的台词
-        　上次补货：{a.running ? '正在补…' : a.last ? `${time(a.last.at)}，新写 ${a.last.added} 件、换说法 ${a.last.rotated} 件，其中 ${a.last.withButtons} 件带回话按钮，约 ${yuan(a.last.cost)}${a.last.ok ? '' : `，没写成（${a.last.error}）`}${a.last.note ? `（${a.last.note}）` : ''}` : '还没补过'}
-        　本月约 {yuan(a.monthCost)}
+      <p className="ay-small" style={{ margin: '6px 0 0' }}>库存：还有 <b>{a.stock ?? '…'}</b> 条没说过的台词</p>
+      <p className="ay-small" style={{ margin: '2px 0 0' }}>
+        上次补货：{a.running ? '正在补…' : a.last ? `${time(a.last.at)}，新写 ${a.last.added} 件、换说法 ${a.last.rotated} 件，其中 ${a.last.withButtons} 件带回话按钮，约 ${yuan(a.last.cost)}${a.last.ok ? '' : `，没写成（${a.last.error}）`}${a.last.note ? `（${a.last.note}）` : ''}` : '还没补过'}
+      </p>
+      <p className="ay-small" style={{ margin: '2px 0 0' }}>
+        本月约 {yuan(a.monthCost)}
         {a.price.source === 'official' ? <>（按 DeepSeek 官方价算，{a.price.checked} 查的，<a href={a.price.url} target="_blank" rel="noreferrer">来源</a>；现在是{a.price.peak ? '高峰' : '空闲'}时段：输入 {a.price.miss}、输出 {a.price.out} 元 / 百万 token）</> : a.price.source === 'config' ? '（按你配置的价格算）' : '（这个模型不在内置价格表里，也没配价格，按 deepseek-flash 的高峰价估的）'}
       </p>
       {a.on && a.paused && <p className="ay-err ay-small" style={{ margin: '6px 0 0' }}>

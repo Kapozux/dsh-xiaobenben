@@ -829,10 +829,7 @@ export function createPet(host, opts) {
     // 碎碎念：「只随便聊聊」时每次都是；「随便」时大约四次里一次；别的模式不说
     const pr0 = opts.prefs.get()
     const idleOdds = pr0.mode === 'idle' ? 1 : (pr0.mode || 'all') === 'all' ? (typeof pr0.idleOdds === 'number' ? pr0.idleOdds : 0.25) : 0
-    if (Math.random() < idleOdds) {
-      const line = pickIdle()
-      if (line) return sayIdle(line)
-    }
+    if (idleOdds >= 1) { const line = pickIdle(); if (line) return sayIdle(line) }     // 「只随便聊聊」：不用翻本子
     const me = thinking = { nags: 0 }
     hideBubble()
     const flipping = flipStart()                  // 有翻本子的帧就翻本子，不弹「想想」气泡
@@ -859,6 +856,8 @@ export function createPet(host, opts) {
     const reworded = cand.filter(m => seen(m) && m.lineAt && seen(m)[1] < m.lineAt)          // 说过，但后来换了说法
     const rested = cand.filter(m => seen(m) && !(m.lineAt && seen(m)[1] < m.lineAt) && age(m) >= REST)
     const m = draw(never.filter(x => x.styled)) || draw(never) || draw(reworded) || draw(rested)
+    // 还有旧账可翻的时候，「随便」模式大约四次里一次碎碎念；都翻过以后归下面的轮换管（碎碎念最多三分之一）
+    if (m && Math.random() < idleOdds) { const line = pickIdle(); if (line) { flipStop(); return sayIdle(line) } }
     if (m) return sayMoment(m)
     if (!d.moments.length) return say({ text: '本肥鱼还没跟主人一起干过活呢。派点活给本肥鱼？', anim: 'poke' })
     // 都翻过了：一天只说一次「过两天再来」，之后就拿别的话接上，不冷场
@@ -867,10 +866,12 @@ export function createPet(host, opts) {
     const fill = pr.fill || {}, DAY = 864e5
     // 轮换：碎碎念最多占三分之一（每三句里最多一句），其余几样轮着来
     const idleSrc = fill.idle !== false ? () => { const l = pickIdle(); return l && (() => sayIdle(l)) } : null
+    // 每一样先挑歇够一天的；都是今天刚翻过的（比如一口气把旧账翻完），就挑这一样里最久没翻的，别让碎碎念一个人顶着
+    const from = list => { const x = draw(list.filter(m => age(m) >= DAY)) || [...list].sort((a, b) => age(b) - age(a))[0]; return x && (() => sayMoment(x)) }
     const others = [
-      ['today', () => { const x = draw(cand.filter(m => m.event === 'stat_today' && age(m) >= DAY)); return x && (() => sayMoment(x)) }],
-      ['stat', () => { const x = draw(cand.filter(m => m.kind === 'stat' && m.event !== 'stat_today' && age(m) >= DAY)); return x && (() => sayMoment(x)) }],
-      ['liked', () => { const x = draw(cand.filter(m => (fb.lines[m.text] || 0) > 0 && age(m) >= DAY)); return x && (() => sayMoment(x)) }],
+      ['today', () => from(cand.filter(m => m.event === 'stat_today'))],
+      ['stat', () => from(cand.filter(m => m.kind === 'stat' && m.event !== 'stat_today'))],
+      ['liked', () => from(cand.filter(m => (fb.lines[m.text] || 0) > 0))],
     ].filter(([k]) => fill[k] !== false)
     const nextOther = () => { for (let n = 0; n < others.length; n++) { const go = others[(otherAt + n) % others.length][1](); if (go) { otherAt = (otherAt + n + 1) % others.length; return go } } return null }
     const idleTurn = fillAt % 3 === 2                    // 第三句才轮到碎碎念

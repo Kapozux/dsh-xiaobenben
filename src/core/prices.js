@@ -42,5 +42,7 @@ export const costOf = (u, p) => ((u.in || 0) * p.miss + (u.cache || 0) * p.hit +
 /** 给只认 { provider, model, input, output } 的老报价函数用：配置里的照旧，默认表里的模型按此刻的时段补上 */
 export function listPrices(route, userPrices = [], ts = Date.now(), cal) {
   const p = priceAt(route, userPrices, ts, cal)
-  return p.source === 'config' ? userPrices : [...userPrices, { provider: route.provider, model: route.model, input: p.miss, output: p.out, currency: p.currency }]
+  if (p.source === 'config') return userPrices.map(u => (u.provider === route.provider && u.model === route.model ? { ...u, note: '按你配置的价格' } : u))
+  const note = p.source === 'official' ? `按 DeepSeek 官方价（${p.checked} 查），现在是${p.peak ? '高峰' : '空闲'}时段` : '这个模型不在内置价格表里，按 deepseek-flash 的高峰价估的'
+  return [...userPrices, { provider: route.provider, model: route.model, input: p.miss, output: p.out, currency: p.currency, note }]
 }

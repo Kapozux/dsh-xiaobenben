@@ -181,7 +181,7 @@ export function styleQuote(cards, route, prices = []) {
     route, count: cards.length, calls: write.length + pickCalls + optCalls + pickCalls, inputTokens, outputTokens, hash: cardsHash(cards),
     stages: { write: { calls: write.length, input: Math.round(writeIn * 1.3), output: Math.round(writeOut * 1.3) }, pick: { calls: pickCalls, input: pickIn, output: pickOut }, options: { calls: optCalls, input: optIn, output: optOut }, check: { calls: pickCalls, input: checkIn, output: checkOut } },
     withContext: cards.filter(c => c.ctx).length,
-    cost: cost === null ? null : { amount: cost, currency: price.currency || 'USD' },
+    cost: cost === null ? null : { amount: cost, currency: price.currency || 'USD', note: price.note || '按你配置的价格' },
     system: STYLE_SYSTEM, prompt: cards.map(cardLine).join('\n\n'), sample: cards.filter(c => c.ctx).slice(0, 2).concat(cards.filter(c => !c.ctx).slice(0, 1)).map(cardLine),
   }
 }

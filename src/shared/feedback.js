@@ -22,6 +22,16 @@ export function normFeedback(d) {
     .slice(-300).map(e => ({ t: e.t, what: e.what.slice(0, 20), text: e.text.slice(0, 400), d: num(e.d) ?? 0 }))
   return fb
 }
+/**
+ * 存之前把文件里已有的「翻过几次」并进来：同一个本子可能开着几处（两个网页标签、桌面那只），
+ * 各自手里是自己那份，谁后存谁覆盖的话，另一处翻过的事就丢了，旧账会被当成没说过再翻一遍。
+ * 翻过的次数只增不减，所以每件事取次数大的、时间晚的那个就行。
+ */
+export function mergeShown(fb, onDisk) {
+  const out = normFeedback(fb), old = normFeedback(onDisk).shown
+  for (const [k, [n, t]] of Object.entries(old)) { const cur = out.shown[k]; out.shown[k] = cur ? [Math.max(cur[0], n), Math.max(cur[1], t)] : [n, t] }
+  return out
+}
 export function feedbackJson(fb) {
   const s = JSON.stringify(normFeedback(fb))
   if (s.length > MAX_BYTES) throw new Error('反馈记录太大了')

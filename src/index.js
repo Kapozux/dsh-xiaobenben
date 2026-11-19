@@ -12,7 +12,7 @@ import { Store } from './store.js'
 import { dshAdapter } from './llm-adapter.js'
 import { Pet } from './pet.js'
 import { Desktop } from './desktop.js'
-import { normFeedback, feedbackJson } from './shared/feedback.js'
+import { normFeedback, feedbackJson, mergeShown } from './shared/feedback.js'
 import { Styler } from './styler.js'
 import { Auto } from './auto.js'
 import { listPrices } from './core/prices.js'
@@ -66,7 +66,7 @@ export function apply(ctx, config = {}) {
   const quick = dshAdapter(ctx.llm, { quick: true })
   const calendar = { holidays: config.holidays || [], workdays: config.workdays || [] }
   // 报价用的价格：配置里有就用配置的，没有就用内置的官方默认价（按此刻是空闲还是高峰）
-  const styler = new Styler({ pet, store, adapter: quick, prices: () => listPrices(currentRoute(), config.prices || [], Date.now(), calendar) })
+  const styler = new Styler({ pet, store, adapter: quick, prices: route => listPrices(route || currentRoute(), config.prices || [], Date.now(), calendar) })
   let running = null                          // 同一时间只跑一个生成，不排队、不并发
 
   const currentRoute = () => {
@@ -157,7 +157,13 @@ export function apply(ctx, config = {}) {
     // 主人的反馈（👍👎、点过的按钮）：和桌面那只共用 feedback.json
     async feedback(body) {
       const file = path.join(path.dirname(store.file), 'feedback.json')
-      if (body.fb) { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, feedbackJson(body.fb)); return { ok: true } }
+      if (body.fb) {
+        let onDisk = null
+        try { onDisk = JSON.parse(fs.readFileSync(file, 'utf8')) } catch {}
+        fs.mkdirSync(path.dirname(file), { recursive: true })
+        fs.writeFileSync(file, feedbackJson(mergeShown(body.fb, onDisk)))      // 别处翻过的事别被这一份盖掉
+        return { ok: true }
+      }
       try { return { fb: normFeedback(JSON.parse(fs.readFileSync(file, 'utf8'))) } } catch (err) { if (err.code !== 'ENOENT') console.warn('[dsh-xiaobenben] 读反馈失败', err.message); return { fb: null } }
     },
     async desktop(body) {
