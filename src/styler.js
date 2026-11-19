@@ -33,7 +33,7 @@ export class Styler {
   async quote({ route, redo = false }) {
     const cards = await this.pending(redo)
     const all = (await this.pet.moments({ raw: true })).moments
-    return { ...styleQuote(cards, route, this.prices), styled: Object.keys(this.store.read().styled || {}).length, total: all.length, privateSkipped: all.filter(m => m.sensitive.length).length }
+    return { ...styleQuote(cards, route, typeof this.prices === 'function' ? this.prices() : this.prices), styled: Object.keys(this.store.read().styled || {}).length, total: all.length, privateSkipped: all.filter(m => m.sensitive.length).length }
   }
 
   async start({ route, hash, redo = false }) {

@@ -79,12 +79,13 @@ function AutoStatus({ a, onChange, onOpen }) {
         让她自己攒着话说：没说过的台词少于 {a.target} 条、或者当天有新的事，就在你闲下来时补一批（每次最多约 {a.caps.run.toLocaleString()} token，每月最多约 {a.caps.monthYuan} 元，只用来防意外）
       </Box>
       <Box checked={a.avoidPeak} onChange={on => call('auto.set', { avoidPeak: on }).then(onChange)}>
-        补货尽量避开高峰时段（北京时间工作日 9～18 点；库存见底了就不等）
+        补货尽量避开高峰时段（北京时间工作日 9–12 点、14–18 点；其余时间和周末都算空闲；库存见底了就不等）
       </Box>
       <p className="ay-small" style={{ margin: '6px 0 0' }}>
         库存：还有 <b>{a.stock ?? '…'}</b> 条没说过的台词
         　上次补货：{a.running ? '正在补…' : a.last ? `${time(a.last.at)}，新写 ${a.last.added} 件、换说法 ${a.last.rotated} 件，其中 ${a.last.withButtons} 件带回话按钮，约 ${yuan(a.last.cost)}${a.last.ok ? '' : `，没写成（${a.last.error}）`}${a.last.note ? `（${a.last.note}）` : ''}` : '还没补过'}
-        　本月约 {yuan(a.monthCost)}{a.price.assumed ? '（没配这个模型的价格，按输入 2 元、输出 8 元每百万 token 估的）' : ''}
+        　本月约 {yuan(a.monthCost)}
+        {a.price.source === 'official' ? <>（按 DeepSeek 官方价算，{a.price.checked} 查的，<a href={a.price.url} target="_blank" rel="noreferrer">来源</a>；现在是{a.price.peak ? '高峰' : '空闲'}时段：输入 {a.price.miss}、输出 {a.price.out} 元 / 百万 token）</> : a.price.source === 'config' ? '（按你配置的价格算）' : '（这个模型不在内置价格表里，也没配价格，按 deepseek-flash 的高峰价估的）'}
       </p>
       {a.on && a.paused && <p className="ay-err ay-small" style={{ margin: '6px 0 0' }}>
         自动更新暂停了：{a.paused}　<button className="ay-btn" onClick={() => call('auto.resume').then(onChange)}>继续</button>
@@ -95,7 +96,7 @@ function AutoStatus({ a, onChange, onOpen }) {
       <Box checked={fill.today !== false} onChange={on => setFill('today', on)}>往年今日（上周、上个月的今天你在弄什么）</Box>
       <Box checked={fill.stat !== false} onChange={on => setFill('stat', on)}>小账本（这一阵的总数）</Box>
       <Box checked={fill.liked !== false} onChange={on => setFill('liked', on)}>点过 👍 的老台词</Box>
-      <p className="ay-small ay-muted" style={{ margin: '4px 0 0' }}>顺序：没说过的台词 → 换了说法的旧事 → 歇够 3 天的旧事 → 上面勾着的几样轮着来。「过两天再来嘛」一天最多说一次。</p>
+      <p className="ay-small ay-muted" style={{ margin: '4px 0 0' }}>顺序：没说过的台词 → 换了说法的旧事 → 歇够 3 天的旧事 → 上面勾着的几样轮换（碎碎念最多占三分之一）。「过两天再来嘛」一天最多说一次。</p>
     </div>
   )
 }

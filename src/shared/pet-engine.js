@@ -494,7 +494,7 @@ export function createPet(host, opts) {
   // ---------- 说话 ----------
   let data = null, inflight = null
   const queues = {}
-  let fillAt = 0                               // 旧账都翻过以后，轮到哪一种话来接
+  let fillAt = 0, otherAt = 0                  // 旧账都翻过以后：接了几句了（每三句里最多一句碎碎念）、其余几样轮到哪一样
   // 反馈：共用一份（opts.feedback.load / save），没有就只记在这只的偏好里
   let fb = emptyFeedback(), fbTimer = 0
   Promise.resolve(opts.feedback?.load?.()).then(d => {
@@ -849,7 +849,7 @@ export function createPet(host, opts) {
     const pr = opts.prefs.get()
     const f = MODES.find(m => m[0] === pr.mode)?.[2] || (() => true)
     // 永远有话说。接替顺序：没说过的（模型写的在前）→ 换了说法的旧事 → 歇够 3 天的旧事 → 碎碎念 → 往年今日 → 小账本 → 点过 👍 的老台词。
-    // 后面四样轮着来（设置里能一样一样关）；「过两天再来嘛」一天最多说一次。
+    // 后面四样轮换：碎碎念最多占三分之一，其余三样轮着来（设置里能一样一样关）；「过两天再来嘛」一天最多说一次。
     const w = m => { const [u, dn] = fb.kinds[m.kind] || [0, 0]; return (1 + u) / (1 + dn * 2) * ((fb.lines[m.text] || 0) > 0 ? 3 : 1) }
     const draw = list => list.map(m => [Math.random() ** (1 / w(m)), m]).sort((a, b) => b[0] - a[0])[0]?.[1] || null
     const cand = d.moments.filter(m => f(m) && (pr.priv === false || !m.sensitive.length) && !((fb.lines[m.text] || 0) < 0))
@@ -865,16 +865,17 @@ export function createPet(host, opts) {
     const today = new Date().toDateString()
     if (pr.dryDay !== today) { opts.prefs.set({ dryDay: today }); return say({ text: '这几天能翻的旧账本肥鱼都翻过啦，过两天再来嘛～', anim: 'coax', emo: 'coax', landFx: 'heart' }) }
     const fill = pr.fill || {}, DAY = 864e5
-    const sources = [
-      ['idle', () => { const l = pickIdle(); return l && (() => sayIdle(l)) }],
+    // 轮换：碎碎念最多占三分之一（每三句里最多一句），其余几样轮着来
+    const idleSrc = fill.idle !== false ? () => { const l = pickIdle(); return l && (() => sayIdle(l)) } : null
+    const others = [
       ['today', () => { const x = draw(cand.filter(m => m.event === 'stat_today' && age(m) >= DAY)); return x && (() => sayMoment(x)) }],
       ['stat', () => { const x = draw(cand.filter(m => m.kind === 'stat' && m.event !== 'stat_today' && age(m) >= DAY)); return x && (() => sayMoment(x)) }],
       ['liked', () => { const x = draw(cand.filter(m => (fb.lines[m.text] || 0) > 0 && age(m) >= DAY)); return x && (() => sayMoment(x)) }],
     ].filter(([k]) => fill[k] !== false)
-    for (let n = 0; n < sources.length; n++) {
-      const go = sources[(fillAt + n) % sources.length][1]()
-      if (go) { fillAt = (fillAt + n + 1) % sources.length; return go() }
-    }
+    const nextOther = () => { for (let n = 0; n < others.length; n++) { const go = others[(otherAt + n) % others.length][1](); if (go) { otherAt = (otherAt + n + 1) % others.length; return go } } return null }
+    const idleTurn = fillAt % 3 === 2                    // 第三句才轮到碎碎念
+    const go = (idleTurn ? idleSrc?.() : nextOther()) || nextOther() || idleSrc?.()     // 轮到的那样没得说，就换另一边
+    if (go) { fillAt++; return go() }
     const any = draw(cand)                              // 四样都关了、或者都没得说：翻一件最久没翻的旧账
     return any ? sayMoment([...cand].sort((a, b) => age(b) - age(a))[0]) : say({ text: '这一类本肥鱼想不起来了……右键换一类？', anim: 'poke' })
   }

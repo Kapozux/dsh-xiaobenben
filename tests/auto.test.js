@@ -4,7 +4,8 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { Auto, TARGET, FILL_TO, IDLE, GAP, RETRY_AFTER, FALLBACK_PRICE, isPeak } from '../src/auto.js'
+import { Auto, TARGET, FILL_TO, IDLE, GAP, RETRY_AFTER, isPeak } from '../src/auto.js'
+import { priceAt, costOf, DEFAULT_PRICES, PRICE_SOURCE } from '../src/core/prices.js'
 import { Store } from '../src/store.js'
 import { normFeedback, REST } from '../src/shared/feedback.js'
 
@@ -122,14 +123,13 @@ test('上限只用来防 bug：每次最多 6 万 token（估算和实际各卡�
   await big.auto.run()
   assert.equal(big.calls.length, 1)
 
-  // 每月 5 元：没配价格按 输入 2 / 输出 8 元每百万 token 估
-  assert.deepEqual({ input: FALLBACK_PRICE.input, output: FALLBACK_PRICE.output }, { input: 2, output: 8 })
+  // 每月 5 元。这个假模型不在价格表里：按 deepseek-flash 的高峰价（输入 2、输出 8）估
   const m = setup({ moments: many(30), usage: { inputTokens: 300000, outputTokens: 600000 }, caps: { run: 60000, monthYuan: 5 } })
   m.auto.set({ on: true })
   await m.auto.run()                                         // 一次调用就是 0.6 + 4.8 = 5.4 元
   let st = await m.auto.status()
   assert.ok(st.monthCost >= 5)
-  assert.equal(st.price.assumed, true)
+  assert.equal(st.price.source, 'assumed')
   assert.match(st.capped, /到了每月 5 元的上限/)
   m.clock.now += GAP + 1
   m.calls.length = 0
@@ -143,8 +143,35 @@ test('上限只用来防 bug：每次最多 6 万 token（估算和实际各卡�
   const p = setup({ moments: many(3), prices: [{ provider: 'p', model: 'm', input: 1, output: 2, currency: 'CNY' }], usage: { inputTokens: 1000000, outputTokens: 0 } })
   p.auto.set({ on: true })
   await p.auto.run()
-  assert.equal((await p.auto.status()).price.assumed, false)
+  assert.equal((await p.auto.status()).price.source, 'config')
   assert.ok(Math.abs((await p.auto.status()).last.cost - p.calls.length * 1) < 1e-9)
+})
+
+test('默认价格表：DeepSeek 官方价（注明哪天查的、来源），分空闲 / 高峰、缓存命中 / 没命中；配置里的 prices 可以覆盖', () => {
+  assert.equal(PRICE_SOURCE.checked, '2026-11-19')
+  assert.equal(PRICE_SOURCE.url, 'https://api-docs.deepseek.com/zh-cn/quick_start/pricing')
+  assert.deepEqual(DEFAULT_PRICES['deepseek-flash'], { hit: [0.02, 0.04], miss: [1, 2], out: [4, 8] })
+  assert.deepEqual(DEFAULT_PRICES['deepseek-v4-pro'], { hit: [0.15, 0.30], miss: [4.5, 9], out: [13.5, 27] })
+  const at = iso => new Date(iso).getTime()                  // 下面都写成 UTC：北京时间 = UTC + 8
+  // 高峰：北京时间工作日 9:00–12:00、14:00–18:00；午休、晚上、周末都是空闲
+  assert.equal(isPeak(at('2026-11-23T01:00:00Z')), true)     // 周一 9:00
+  assert.equal(isPeak(at('2026-11-23T03:59:00Z')), true)     // 周一 11:59
+  assert.equal(isPeak(at('2026-11-23T04:00:00Z')), false)    // 周一 12:00 午休
+  assert.equal(isPeak(at('2026-11-23T05:59:00Z')), false)    // 周一 13:59
+  assert.equal(isPeak(at('2026-11-23T06:00:00Z')), true)     // 周一 14:00
+  assert.equal(isPeak(at('2026-11-23T10:00:00Z')), false)    // 周一 18:00
+  assert.equal(isPeak(at('2026-11-23T00:59:00Z')), false)    // 周一 8:59
+  assert.equal(isPeak(at('2026-11-21T03:00:00Z')), false)    // 周六 11:00
+  assert.equal(isPeak(at('2026-11-23T03:00:00Z'), { holidays: ['2026-11-23'] }), false)   // 配置里填的节假日：全天空闲
+  assert.equal(isPeak(at('2026-11-21T03:00:00Z'), { workdays: ['2026-11-21'] }), true)    // 调休上班的周末：按工作日
+  const flash = { provider: 'deepseek-official', model: 'deepseek-flash' }
+  const idle = priceAt(flash, [], at('2026-11-23T14:00:00Z')), peak = priceAt(flash, [], at('2026-11-23T03:00:00Z'))
+  assert.deepEqual([idle.hit, idle.miss, idle.out, idle.source, idle.peak], [0.02, 1, 4, 'official', false])
+  assert.deepEqual([peak.hit, peak.miss, peak.out, peak.currency, peak.peak], [0.04, 2, 8, 'CNY', true])
+  assert.equal(costOf({ in: 1e6, cache: 1e6, out: 1e6 }, idle), 1 + 0.02 + 4)
+  assert.equal(priceAt({ provider: 'deepseek-official', model: 'deepseek-v4-pro' }, [], at('2026-11-23T03:00:00Z')).out, 27)
+  const mine = priceAt(flash, [{ provider: 'deepseek-official', model: 'deepseek-flash', input: 9, output: 9, currency: 'CNY' }], at('2026-11-23T03:00:00Z'))
+  assert.deepEqual([mine.miss, mine.out, mine.source], [9, 9, 'config'])                    // 配置覆盖默认表
 })
 
 test('连续失败 2 次就暂停，原因写在状态里，点「继续」才再补；同一件事连着两次没写成，7 天内不再试', async () => {

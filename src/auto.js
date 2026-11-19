@@ -7,8 +7,8 @@
  *
  *   - 库存 = 模型写好、还没对主人说过的台词有几条（说没说过看 feedback.json 的 shown；旧事换了说法以后又算没说过）。
  *   - 库存低于 20 条，或者今天有新的事还没写：在下一个空闲时段补一批。新的事优先，不够再给说过的旧事换个说法。
- *   - 空闲时段：没有活在跑、主人最后一次派活在 10 分钟以前；尽量避开模型的高峰时段（库存见底了就不等）。
- *   - 上限只用来防 bug：每次补货最多 6 万 token（估算和实际用量各卡一道），每月最多约 5 元；触顶就停，原因写在状态里。
+ *   - 空闲时段：没有活在跑、主人最后一次派活在 10 分钟以前；尽量避开高峰时段（北京时间工作日 9–12、14–18 点，见 core/prices.js；库存见底了就不等）。
+ *   - 上限只用来防 bug：每次补货最多 6 万 token（估算和实际用量各卡一道），每月最多约 5 元（按官方默认价或配置里的价格，分空闲 / 高峰、缓存命中 / 没命中算）；触顶就停，原因写在状态里。
  *   - 连续 2 次没写成就暂停；同一件事连着两次没写成，7 天内不再试（不然会一直重试烧 token）。
  *   - 补完不弹窗：记下新写了几件，主人下次点她时说一句。
  */
@@ -17,6 +17,9 @@ import path from 'node:path'
 import { styleQuote, styleRun, validLines } from './core/style.js'
 import { estimateTokens } from './core/ai.js'
 import { normFeedback } from './shared/feedback.js'
+import { priceAt, costOf, isPeak } from './core/prices.js'
+
+export { isPeak }
 
 export const TARGET = 20                 // 库存低于这个数就补
 export const FILL_TO = 30                // 一次补到大约这么多
@@ -24,26 +27,15 @@ export const IDLE = 10 * 60e3            // 主人最后一次派活在这么久
 export const GAP = 30 * 60e3             // 两次补货至少隔这么久（防止一直补不上去时空转）
 export const RETRY_AFTER = 7 * 864e5     // 同一件事连着两次没写成，这么久以后再试
 export const DEFAULT_CAPS = { run: 60_000, monthYuan: 5 }
-/** 没配价格表时按这个估钱：每百万 token，人民币。只是个估数，配置里的 prices 有这个模型的价格就用配置的 */
-export const FALLBACK_PRICE = { input: 2, output: 8, currency: 'CNY', assumed: true }
-/** 高峰时段（北京时间，工作日的白天）：这是插件自己的假设，不是官方数据；设置里能关掉「避开高峰」 */
-export const PEAK = { from: 9, to: 18 }
-
 const monthKey = ts => { const d = new Date(ts); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` }
 const dayKey = ts => new Date(ts).toDateString()
 /** 一次调用实际用了多少 token：各家的字段名不一样，都认；没报用量就按字数估 */
 function spent(usage, system, prompt, text) {
   const u = usage || {}
   const i = u.inputTokens ?? u.input_tokens ?? u.prompt_tokens ?? u.input, o = u.outputTokens ?? u.output_tokens ?? u.completion_tokens ?? u.output
-  return { in: Number.isFinite(i) ? i : estimateTokens(system) + estimateTokens(prompt), out: Number.isFinite(o) ? o : estimateTokens(text || '') }
+  // cache：命中缓存的输入（便宜很多）；写缓存的那部分按没命中算
+  return { in: (Number.isFinite(i) ? i : estimateTokens(system) + estimateTokens(prompt)) + (u.cacheWriteTokens || 0), cache: u.cacheReadTokens || 0, out: Number.isFinite(o) ? o : estimateTokens(text || '') }
 }
-/** 北京时间现在是不是高峰（周一到周五 9～18 点） */
-export function isPeak(ts) {
-  const bj = new Date(ts + 8 * 3600e3)             // 用 UTC 的读法读北京时间
-  const day = bj.getUTCDay(), h = bj.getUTCHours()
-  return day >= 1 && day <= 5 && h >= PEAK.from && h < PEAK.to
-}
-
 export class Auto {
   /**
    * @param {{ pet: any, store: import('./store.js').Store, adapter: any, route: () => { provider: string, model: string },
@@ -52,8 +44,8 @@ export class Auto {
    *   activity：现在有没有活在跑、主人最后一次派活是什么时候；isRunning：手动那一路（Styler）是不是正在跑；
    *   shown：每件事对主人说过几次、上次什么时候说的（默认读插件目录里的 feedback.json）
    */
-  constructor({ pet, store, adapter, route, activity, isRunning = () => false, prices = [], caps = {}, shown, now = Date.now }) {
-    Object.assign(this, { pet, store, adapter, route, activity, isRunning, prices, now })
+  constructor({ pet, store, adapter, route, activity, isRunning = () => false, prices = [], calendar = {}, caps = {}, shown, now = Date.now }) {
+    Object.assign(this, { pet, store, adapter, route, activity, isRunning, prices, calendar, now })
     this.caps = { run: caps.run > 0 ? caps.run : DEFAULT_CAPS.run, monthYuan: caps.monthYuan > 0 ? caps.monthYuan : DEFAULT_CAPS.monthYuan }
     this.shown = shown || (() => { try { return normFeedback(JSON.parse(fs.readFileSync(path.join(path.dirname(store.file), 'feedback.json'), 'utf8'))).shown } catch { return {} } })
     this.job = null
@@ -62,12 +54,8 @@ export class Auto {
   #state() { return { on: false, avoidPeak: true, fails: 0, paused: null, runs: [], tried: {}, ...(this.store.read().auto || {}) } }
   #save(patch) { this.store.update(s => ({ ...s, auto: { ...this.#state(), ...patch } })) }
 
-  /** 这个模型的价格（每百万 token）：配置里有就用配置的，没有就用估的那个 */
-  price() {
-    const r = this.route(), p = this.prices.find(p => p.provider === r.provider && p.model === r.model)
-    return p ? { input: p.input, output: p.output, currency: p.currency || 'USD', assumed: false } : FALLBACK_PRICE
-  }
-  cost(tin, tout) { const p = this.price(); return (tin * p.input + tout * p.output) / 1e6 }
+  /** 这个模型此刻的价格（元 / 百万 token，分空闲 / 高峰、缓存命中 / 没命中）：配置里有就用配置的，没有用官方默认表 */
+  price(at = this.now()) { return priceAt(this.route(), this.prices, at, this.calendar) }
   /** 这个月已经花了多少（只算自动补货的） */
   monthCost(at = this.now()) { return this.#state().runs.filter(r => monthKey(r.at) === monthKey(at)).reduce((a, r) => a + (r.cost || 0), 0) }
 
@@ -107,9 +95,9 @@ export class Auto {
     return {
       on: !!s.on, avoidPeak: s.avoidPeak !== false, paused: s.paused || null, running: !!this.job,
       stock, target: TARGET,
-      last: last && { at: last.at, tokens: (last.in || 0) + (last.out || 0), cost: last.cost || 0, ok: last.ok, added: last.added, rotated: last.rotated, withButtons: last.withButtons || 0, error: last.error || null, note: last.note || null },
+      last: last && { at: last.at, tokens: (last.in || 0) + (last.cache || 0) + (last.out || 0), cost: last.cost || 0, ok: last.ok, added: last.added, rotated: last.rotated, withButtons: last.withButtons || 0, error: last.error || null, note: last.note || null },
       monthCost: month, capped: month >= this.caps.monthYuan ? `这个月已经花了约 ${month.toFixed(2)} 元，到了每月 ${this.caps.monthYuan} 元的上限，下个月再补` : null,
-      caps: this.caps, price: p, peakNow: isPeak(this.now()), news: s.news || 0,
+      caps: this.caps, price: p, peakNow: isPeak(this.now(), this.calendar), news: s.news || 0,
     }
   }
 
@@ -122,7 +110,7 @@ export class Auto {
     const need = st.count < TARGET || st.newToday > 0
     const p = this.price(), left = Math.max(0, this.caps.monthYuan - this.monthCost(st.at))
     // 这个月剩下的钱最多还能买多少 token（按输出价算，保守）
-    const budget = Math.max(0, Math.min(this.caps.run, Math.floor(left / Math.max(p.input, p.output) * 1e6)))
+    const budget = Math.max(0, Math.min(this.caps.run, Math.floor(left / Math.max(p.miss, p.out) * 1e6)))
     const route = this.route(), cards = []
     const tokens = list => { const q = styleQuote(list, route); return q.inputTokens + q.outputTokens }
     const want = Math.max(st.newToday, FILL_TO - st.count)
@@ -151,7 +139,7 @@ export class Auto {
     const a = await this.activity()
     if (a.busy) return 'busy'                       // 主人正在派活，不抢
     if (at - (a.lastAt || 0) < IDLE) return 'active' // 刚派过活，等闲下来 10 分钟
-    if (s.avoidPeak !== false && isPeak(at) && st.stock > 0) return 'peak'   // 高峰时段尽量不补；库存见底了就不等
+    if (s.avoidPeak !== false && isPeak(at, this.calendar) && st.stock > 0) return 'peak'   // 高峰时段尽量不补；库存见底了就不等
     await this.run()
     return 'ran'
   }
@@ -167,10 +155,10 @@ export class Auto {
 
   async #run(ctrl) {
     const at = this.now()
-    let tin = 0, tout = 0
+    let tin = 0, tcache = 0, tout = 0, cost = 0
     const finish = run => {
       const s = this.#state()
-      const full = { at, in: tin, out: tout, cost: this.cost(tin, tout), added: 0, rotated: 0, withButtons: 0, error: null, ...run }
+      const full = { at, in: tin, cache: tcache, out: tout, cost, added: 0, rotated: 0, withButtons: 0, error: null, ...run }
       const fails = full.ok ? 0 : s.fails + 1
       this.#save({ runs: [...s.runs, full].slice(-40), fails, news: (s.news || 0) + full.added + full.rotated,
         paused: fails >= 2 ? `连续 ${fails} 次没写成：${full.error}` : s.paused })
@@ -185,7 +173,8 @@ export class Auto {
         if (tin + tout >= budget) { ctrl.abort(); throw new Error(`这一次的 token 上限（${budget}）用完了`) }
         const res = await this.adapter(req)
         const u = spent(res.usage, req.system, req.prompt, res.text)
-        tin += u.in; tout += u.out
+        tin += u.in; tcache += u.cache; tout += u.out
+        cost += costOf(u, this.price())                 // 按这一次调用当时的时段算（空闲 / 高峰价不一样）
         return res
       }
       const r = await styleRun({ adapter: metered, cards, route: this.route(), signal: ctrl.signal, avoid })
