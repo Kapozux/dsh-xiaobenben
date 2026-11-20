@@ -12,6 +12,19 @@ export function dshHome() {
   return env ? path.resolve(env.replace(/^~(?=$|[/\\])/, os.homedir())) : path.join(os.homedir(), '.dsh')
 }
 
+/**
+ * 改名盖掉旧文件。Windows 上目标文件正被别的程序读着（杀毒、索引、另一个 dsh 进程）时会报 EPERM / EBUSY / EACCES，
+ * 过几十毫秒就好：最多等 5 次（共约 0.3 秒），还不行才抛。别的系统一次就成。
+ */
+export function renameOver(from, to) {
+  for (let i = 0; ; i++) {
+    try { return fs.renameSync(from, to) } catch (err) {
+      if (i >= 5 || !['EPERM', 'EBUSY', 'EACCES'].includes(err.code)) { try { fs.unlinkSync(from) } catch {} throw err }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20 * (i + 1))
+    }
+  }
+}
+
 export class Store {
   constructor(file = path.join(dshHome(), 'storages', 'dsh-xiaobenben', 'state.json')) {
     this.file = file
@@ -31,7 +44,7 @@ export class Store {
     fs.mkdirSync(path.dirname(this.file), { recursive: true })
     const tmp = `${this.file}.${process.pid}.tmp`
     fs.writeFileSync(tmp, JSON.stringify(next, null, 2))
-    fs.renameSync(tmp, this.file)
+    renameOver(tmp, this.file)
     return next
   }
 }

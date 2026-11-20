@@ -1,0 +1,62 @@
+# 在 Windows 上真跑一遍：全量测试；把插件装进一份全新的 dsh、起 dsh web、请求每个接口、用无头浏览器看挂件。
+# 冒烟跑两遍：npm 上最新发布的那一版（用户按名字装到的），和这次提交打出来的包。脚本见 scripts/smoke-dsh.mjs。
+name: windows
+
+on:
+  push:
+  workflow_dispatch:
+    inputs:
+      npm_spec:
+        description: 从 npm 装哪个（空 = 最新发布的版本）
+        default: ''
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: 装 pnpm 和 dsh
+        run: |
+          npm i -g pnpm "@deepseek-ai/dsh"
+          dsh --version
+      - name: 装依赖
+        run: pnpm install --frozen-lockfile
+      - name: 全量测试
+        run: npm test
+      - name: 装无头浏览器
+        if: always()
+        run: |
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\pw" | Out-Null
+          Set-Location "$env:RUNNER_TEMP\pw"
+          npm init -y | Out-Null
+          npm i playwright
+          npx playwright install chromium
+      - name: 冒烟：npm 上发布的版本
+        if: always()
+        env:
+          XBB_PLAYWRIGHT: ${{ runner.temp }}\pw
+          NPM_SPEC: ${{ inputs.npm_spec }}
+        run: |
+          $spec = $env:NPM_SPEC
+          if (-not $spec) { $spec = "dsh-xiaobenben@" + (npm view dsh-xiaobenben version) }
+          New-Item -ItemType Directory -Force shots | Out-Null
+          node scripts/smoke-dsh.mjs $spec --browser --shot shots/npm.png
+      - name: 冒烟：这次提交打的包
+        if: always()
+        env:
+          XBB_PLAYWRIGHT: ${{ runner.temp }}\pw
+        run: |
+          pnpm pack
+          $tgz = (Get-ChildItem dsh-xiaobenben-*.tgz | Select-Object -First 1).FullName
+          New-Item -ItemType Directory -Force shots | Out-Null
+          node scripts/smoke-dsh.mjs $tgz --browser --shot shots/commit.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-shots
+          path: shots/
+          if-no-files-found: ignore

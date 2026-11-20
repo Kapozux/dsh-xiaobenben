@@ -5,7 +5,7 @@ import { execFileSync, spawn } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { Desktop, ELECTRON_MIRROR, ELECTRON_VERSION } from '../src/desktop.js'
+import { Desktop, ELECTRON_MIRROR, ELECTRON_VERSION, UNSUPPORTED } from '../src/desktop.js'
 
 const mac = { skip: process.platform !== 'darwin' }
 const BIN = 'Electron.app/Contents/MacOS/Electron'
@@ -46,7 +46,7 @@ test('本机哪都没有 Electron：后台下载（默认 npmmirror），带进�
   assert.equal(t.launched.length, 0)
   finish(); await d.dl.promise
   assert.deepEqual(t.launched, [path.join(t.dir, 'electron', BIN)])
-  assert.deepEqual(d.status(), { on: true, error: null, downloading: null })
+  assert.deepEqual(d.status(), { on: true, error: null, downloading: null, supported: true })
   d.stop()
 })
 
@@ -93,5 +93,27 @@ test('桌面版给得出引擎 import 的每一个模块（少一个整页白屏
       assert.match(m[1], /^\.\/[\w-]+\.js$/, f + ' import 了 ' + m[1] + '：桌面版只给同目录的 .js')
       todo.push(m[1].slice(2))
     }
+  }
+})
+
+test('Windows / Linux：桌面模式不支持——说清楚，不下载、不开窗口、不留出错记录；上次开着的也不接着开', async () => {
+  for (const platform of ['win32', 'linux']) {
+    const b = setup()
+    let downloads = 0
+    const d = new Desktop({ ...b, platform, download: async () => { downloads++; return '' } })
+    assert.deepEqual(d.status(), { on: false, error: null, downloading: null, supported: false, unsupported: UNSUPPORTED })
+    const s = await d.start()
+    assert.equal(s.on, false)
+    assert.equal(s.supported, false)
+    assert.match(s.error, /只支持 macOS.*网页右下角/)
+    assert.equal(downloads, 0)
+    assert.deepEqual(b.launched, [])
+    assert.deepEqual(fs.readdirSync(b.dir), [])                    // 台词文件也不写
+    assert.equal(b.store.read().desktop, undefined)
+    b.store.update(() => ({ desktop: { on: true, pid: process.pid } }))   // 从 Mac 同步过来的状态
+    await d.resume()
+    assert.deepEqual(b.launched, [])
+    assert.equal(d.status().on, false)
+    assert.equal(d.stop().on, false)                                // 不会去杀那个 pid
   }
 })

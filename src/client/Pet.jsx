@@ -69,7 +69,8 @@ export function Pet() {
         buttons: [['自动更新（推荐）', () => setDialog('auto')], ['只这一次', () => setDialog('once')], ['不用', () => { call('style.answer', { answer: 'no' }).then(refreshStyle); engine.say({ text: '好，本肥鱼照本子念。想换了右键找我。', anim: 'bow' }) }]],
       })
     }, 6000)
-    const syncDesktop = d => { host.style.display = d?.desktop?.on ? 'none' : '' }
+    let deskOk = true                          // 这台电脑能不能「放到桌面上」（只有 macOS 能）；不能就不在菜单里放这一项
+    const syncDesktop = d => { if (d?.desktop) deskOk = d.desktop.supported !== false; host.style.display = d?.desktop?.on ? 'none' : '' }
     engine = createPet(host, {
       size: 340,
       aspect: 480 / 680,
@@ -83,7 +84,7 @@ export function Pet() {
       menuExtras: () => [{
         label: style?.running ? '模型正在写台词…' : style?.styled ? `更新台词（${style.pending ? `${style.pending} 件新的` : '没有新的'}）` : '用你的模型写台词…',
         onClick: () => { if (!style?.running) setDialog('once') },
-      }, {
+      }, ...(deskOk ? [{
         label: '放到桌面上（关了网页也在）',
         onClick: () => {
           engine.say({ text: '本肥鱼搬家中……', anim: 'file' })
@@ -93,7 +94,7 @@ export function Pet() {
             else engine.say({ text: '本肥鱼上不了桌面：' + (d.desktop?.error || '不知道为什么'), anim: 'sigh' })
           }).catch(e => engine.say({ text: '本肥鱼上不了桌面：' + e.message, anim: 'sigh' }))
         },
-      }],
+      }] : [])],
     })
     // 设置页「调试」发来的指令（同一个页面里的事件，不联网）
     const onDebug = e => { const r = engine.debug(e.detail || {}); e.detail?.reply?.(r) }

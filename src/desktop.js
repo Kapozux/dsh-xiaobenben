@@ -20,6 +20,9 @@ const MAIN = fileURLToPath(new URL('../desktop/main.cjs', import.meta.url))
 const BIN_IN_APP = 'Electron.app/Contents/MacOS/Electron'
 export const ELECTRON_VERSION = '43.3.0'
 export const ELECTRON_MIRROR = 'https://npmmirror.com/mirrors/electron/'
+/** 桌面模式只在 macOS 上做了、测了（Electron.app 的目录结构、ditto 解压、透明窗口的点击穿透都是 macOS 的） */
+export const desktopSupported = (platform = process.platform) => platform === 'darwin'
+export const UNSUPPORTED = '「放到桌面上」目前只支持 macOS，这台电脑用不了；小本本还是住在 dsh 网页右下角，翻旧账和年度回顾都照常'
 
 /** 真去下载：返回缓存里那个 zip 的路径。onProgress(0..100) */
 async function fetchElectron({ version, mirror, onProgress, signal }) {
@@ -41,9 +44,10 @@ export class Desktop {
   /**
    * @param {{ store: import('./store.js').Store, pet: import('./pet.js').Pet, electron?: string, mirror?: string, version?: string,
    *   download?: typeof fetchElectron, launch?: (bin: string) => { pid?: number }, cacheDir?: string }} deps
-   *   download / launch / cacheDir 只给测试换
+   *   download / launch / cacheDir / platform 只给测试换
    */
-  constructor({ store, pet, electron = '', mirror = '', version = '', download = fetchElectron, launch = null, cacheDir = '' }) {
+  constructor({ store, pet, electron = '', mirror = '', version = '', download = fetchElectron, launch = null, cacheDir = '', platform = process.platform }) {
+    this.supported = desktopSupported(platform)
     this.store = store
     this.pet = pet
     this.electron = electron
@@ -58,6 +62,7 @@ export class Desktop {
   }
 
   status() {
+    if (!this.supported) return { on: false, error: null, downloading: null, supported: false, unsupported: UNSUPPORTED }
     const off = path.join(this.dir, 'desktop-off')
     if (fs.existsSync(off)) {
       try { fs.unlinkSync(off) } catch {}
@@ -67,18 +72,20 @@ export class Desktop {
     const d = this.store.read().desktop || {}
     const on = !!d.on && alive(d.pid)
     if (d.on && !on) this.#stopTimer()
-    return { on, error: d.error || null, downloading: this.dl ? `正在下载 Electron ${this.version}（约 120 MB）· ${this.dl.percent}%` : null }
+    return { on, error: d.error || null, downloading: this.dl ? `正在下载 Electron ${this.version}（约 120 MB）· ${this.dl.percent}%` : null, supported: true }
   }
 
   /** 插件启动时：上次开着就接着开（窗口已经在就只接上定时重写） */
   async resume() {
     const d = this.store.read().desktop
-    if (!d?.on) return
+    if (!this.supported || !d?.on) return
     if (alive(d.pid)) { await this.#writeMoments(true).catch(err => console.warn('[dsh-xiaobenben] 重写台词失败', err)); this.#startTimer(); return }
     await this.start().catch(err => console.warn('[dsh-xiaobenben] 大肥鱼上桌面失败', err))
   }
 
   async start() {
+    // 不支持的系统：什么都不做（不写台词文件、不找也不下载 Electron），直接说清楚
+    if (!this.supported) return { ...this.status(), error: UNSUPPORTED }
     try {
       await this.#writeMoments(false)
       const cur = this.store.read().desktop
@@ -131,6 +138,7 @@ export class Desktop {
   }
 
   stop() {
+    if (!this.supported) return this.status()
     this.dl?.ctrl.abort(new Error('主人取消了'))
     const d = this.store.read().desktop
     if (alive(d?.pid)) { try { process.kill(d.pid) } catch (err) { console.warn('[dsh-xiaobenben] 关桌面大肥鱼失败', err.message) } }
@@ -161,7 +169,6 @@ export class Desktop {
       if (fs.existsSync(p)) return p
       throw new Error(`配置里的 Electron 路径不存在：${p}`)
     }
-    if (process.platform !== 'darwin') throw new Error('桌面版目前只支持 macOS')
     const mine = path.join(this.dir, 'electron', BIN_IN_APP)
     if (fs.existsSync(mine)) return mine
     const shared = path.join(this.dir, '..', '..', 'electron', BIN_IN_APP)      // dsh-pet 下载解好的那份（$DSH_HOME/electron）

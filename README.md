@@ -19,8 +19,10 @@
 **方法一：按名字装**
 
 ```sh
-dsh plugin --profile web add dsh-xiaobenben
+dsh plugin --profile web add dsh-xiaobenben@0.2.5
 ```
+
+带上版本号：不带的话，新版发布后的头一天里装到的会是上一个旧版（实测：0.2.4 发布 22 小时后，`add dsh-xiaobenben` 和 `add dsh-xiaobenben@latest` 装到的都是 0.2.1，写明 `@0.2.4` 才装到 0.2.4）。
 
 **方法二：让 dsh 自己装**。在 dsh 里发这句话：
 
@@ -31,8 +33,10 @@ dsh plugin --profile web add dsh-xiaobenben
 上面两种都不行时，可以直接装打好的包：
 
 ```sh
-dsh plugin --profile web add https://github.com/Kapozux/dsh-xiaobenben/releases/download/v0.2.4/dsh-xiaobenben-0.2.4.tgz
+dsh plugin --profile web add https://github.com/Kapozux/dsh-xiaobenben/releases/download/v0.2.5/dsh-xiaobenben-0.2.5.tgz
 ```
+
+**Windows**：网页里的小本本（翻旧账、气泡、右键菜单）和年度回顾都能用；「放到桌面上」只有 macOS 有，Windows 和 Linux 上菜单里没有这一项。每次提交都在 GitHub Actions 的 windows-latest 上跑一遍全量测试，再把插件装进一份全新的 dsh、起 `dsh web`、请求每个接口、用无头浏览器点一下挂件（[.github/workflows/windows.yml](.github/workflows/windows.yml)）。Linux 没有跑过。
 
 改代码时可以装本地目录（链接，改完 `pnpm run build` 再重开 dsh，不用重装）：
 
@@ -45,7 +49,7 @@ dsh plugin --profile web add ./dsh-xiaobenben
 右下角的小本本鲸鱼娘：**左键点一下**，她就翻一件你和 agent 一起干过的真事——派的活干了多久、被你喊停、说好了却挨骂、认错、深夜加班、总账……
 说完气泡底下有 3 个按钮：两个这一类的反应（点了她接一句）和「再翻一件」。抓起来能甩；右键有菜单：说哪一类、藏起私事、**放到桌面上**（关了网页也在）、先收起来。
 
-「放到桌面上」目前只支持 macOS，要用 Electron 开一个透明窗口：本机有现成的（比如装过 dsh-pet）就直接用；没有会自动下载 Electron 43.3.0，下载时她会报进度，下完自己上桌面。镜像可以在插件配置的 `electronMirror` 或环境变量 `XBB_ELECTRON_MIRROR` 里换，也可以在 `electronPath` 里直接填一个 Electron.app 的路径。
+「放到桌面上」目前只支持 macOS（别的系统上菜单里没有这一项，设置页会写明这台电脑用不了），要用 Electron 开一个透明窗口：本机有现成的（比如装过 dsh-pet）就直接用；没有会自动下载 Electron 43.3.0，下载时她会报进度，下完自己上桌面。镜像可以在插件配置的 `electronMirror` 或环境变量 `XBB_ELECTRON_MIRROR` 里换，也可以在 `electronPath` 里直接填一个 Electron.app 的路径。
 
 事实（什么时候、在哪件事上、一句原话、多少分钟多少碗白饭）由程序从会话记录里判断、算出来；说法有两种：
 
@@ -144,6 +148,7 @@ pnpm install
 npm test                 # 单元测试：统计、打码、原话逐字核对、报价、生成（假模型），不调真模型
 npm run check:local      # 拿本机 ~/.claude 和 ~/.codex 跑整条链路：不跑 AI、AI 失败两种情况（假模型，不发任何东西）
 pnpm run build           # 打包网页那一半 → lib/client.js
+node scripts/smoke-dsh.mjs <包名@版本 | xxx.tgz> [--browser]   # 装进一份全新的 dsh（临时目录，不碰 ~/.dsh）、起 dsh web、请求每个接口；--browser 再用无头浏览器看挂件（要 playwright）
 node scripts/write-light-home.mjs <目录>   # 把手造的轻度数据（只有 dsh、三个月、150 句）写成真的 dsh 会话，给单独的 DSH_HOME 用
 ```
 

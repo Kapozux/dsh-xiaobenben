@@ -162,12 +162,12 @@ function DebugSection() {
 
         <h3 style={{ margin: '14px 0 6px', fontSize: 14 }}>桌面版</h3>
         <p className="ay-small ay-muted">
-          {desk ? (desk.on ? '在桌面上（网页这只藏起来了，下面的按钮要先收回来才看得到）。' : '没开。') : '…'}
+          {desk ? (desk.supported === false ? desk.unsupported + '。' : desk.on ? '在桌面上（网页这只藏起来了，下面的按钮要先收回来才看得到）。' : '没开。') : '…'}
           {desk?.downloading ? ` ${desk.downloading}，下完自己上桌面。` : ''}
           {desk?.error && !desk.on && !desk.downloading ? ` 上次出错：${desk.error}` : ''}
         </p>
         <div>
-          {!desk?.on && <B disabled={deskBusy} onClick={() => desktop(true)}>{deskBusy ? '启动中…' : '放到桌面上'}</B>}
+          {!desk?.on && <B disabled={deskBusy || desk?.supported === false} onClick={() => desktop(true)}>{deskBusy ? '启动中…' : '放到桌面上'}</B>}
           {desk?.on && <B disabled={deskBusy} onClick={() => desktop(false)}>收回网页里</B>}
         </div>
 

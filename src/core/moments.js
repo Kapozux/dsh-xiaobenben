@@ -29,16 +29,35 @@ const IDLE_CAP = 180e3
 /** 一碗白饭 = 5 万 token（输入 + 输出 + 缓存写入；缓存读取不算）。换算着玩的，界面上写明。 */
 export const RICE = 50_000
 
-const base = p => String(p || '').split(/[\\/]/).filter(Boolean).pop() || ''
+export const base = p => String(p || '').split(/[\\/]/).filter(Boolean).pop() || ''
 
 export function newTurn({ key, title = null, project = null, start, text }) {
   return { key, title, project, start, end: start, last: start, active: 0, text, next: null, tokens: 0, tools: 0, commands: 0, reads: 0, agents: 0, edited: new Set(), texts: [], interrupted: false, cwd: null, subs: {} }
 }
 /** 改的文件在工作目录的哪个子文件夹里（工作目录是个装了很多项目的大文件夹时，子文件夹才是「哪个项目」；是不是项目由读文件的那层判断） */
 function noteSub(t, file) {
-  if (!t.cwd || !String(file).startsWith(t.cwd + '/')) return
-  const segs = String(file).slice(t.cwd.length + 1).split('/')
+  const rel = relTo(t.cwd, file)
+  if (rel === null) return
+  const segs = rel.split('/')
   if (segs.length > 1) t.subs[segs[0]] = (t.subs[segs[0]] || 0) + 1
+}
+/** 路径统一成 / 分隔再比：Windows 的记录里是 C:\Users\…，同一个会话里还会混着 C:/…（工具给的）和 /c/…（Git Bash） */
+const slashed = p => String(p || '').replace(/\\/g, '/').replace(/\/+$/, '')
+const isWin = p => /^[A-Za-z]:\//.test(p)
+/** Windows 盘符路径不分大小写（c:\Users 和 C:\Users 是同一个），别的系统分 */
+export function samePath(a, b) {
+  const x = slashed(a), y = slashed(b)
+  return !!x && (isWin(x) ? x.toLowerCase() === y.toLowerCase() : x === y)
+}
+/** file 在 cwd 底下：返回相对路径（/ 分隔）；不在返回 null */
+export function relTo(cwd, file) {
+  const c = slashed(cwd)
+  if (!c) return null
+  let f = slashed(file)
+  if (isWin(c)) f = f.replace(/^\/([A-Za-z])\//, '$1:/')          // Git Bash 的 /c/Users/… = C:/Users/…
+  const head = f.slice(0, c.length + 1)
+  if (isWin(c) ? head.toLowerCase() !== (c + '/').toLowerCase() : head !== c + '/') return null
+  return f.slice(c.length + 1)
 }
 export function markTurn(t, ts) {
   const gap = ts - t.last
@@ -66,7 +85,7 @@ export function claudeTurns(lines, { key, home = '' }) {
     if (o.type === 'system' && o.subtype === 'turn_duration' && !o.isSidechain) { if (cur) cur.ended = true; continue }
     if (o.isSidechain || (o.type !== 'user' && o.type !== 'assistant')) continue
     const t = Date.parse(o.timestamp); if (!t) continue
-    if (o.cwd) { cwd = o.cwd; project = home && o.cwd === home ? '主目录' : base(o.cwd) }
+    if (o.cwd) { cwd = o.cwd; project = home && samePath(o.cwd, home) ? '主目录' : base(o.cwd) }
     const c = o.message?.content
     if (o.type === 'user') {
       const text = typeof c === 'string' ? c : Array.isArray(c) ? c.filter(b => b?.type === 'text').map(b => b.text).join('\n') : ''
@@ -94,7 +113,7 @@ export function claudeTurns(lines, { key, home = '' }) {
       cur.tools++
       const n = b.name
       if (['Edit', 'Write', 'MultiEdit', 'NotebookEdit'].includes(n) && b.input?.file_path) { cur.edited.add(base(b.input.file_path)); noteSub(cur, b.input.file_path) }
-      if (n === 'Bash') { cur.commands++; noteSub(cur, (String(b.input?.command || '').match(/\/[^\s'"`;&|]+/g) || []).find(p => cur.cwd && p.startsWith(cur.cwd + '/')) || '') }
+      if (n === 'Bash') { cur.commands++; noteSub(cur, (String(b.input?.command || '').match(/(?:[A-Za-z]:[\\/]|\/)[^\s'"`;&|]+/g) || []).find(p => relTo(cur.cwd, p) !== null) || '') }
       if (n === 'Read') { cur.reads++; noteSub(cur, b.input?.file_path || '') }
       if (n === 'Agent' || n === 'Task') cur.agents++
     }
