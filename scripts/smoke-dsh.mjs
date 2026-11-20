@@ -201,22 +201,31 @@ async function inBrowser(url) {
     // 全新的 dsh 第一次打开有弹窗（Preview Notice 之类），开着时挂件点不到：一个一个点掉。按钮要等几秒才亮
     const cx = box.x + box.width / 2, cy = box.y + box.height / 2
     const blocked = () => page.evaluate(([x, y]) => { const p = document.querySelector('.fy-pet'); return !p || !!p.closest('[inert]') || !p.contains(document.elementFromPoint(x, y)) }, [cx, cy])
-    for (let i = 0; i < 6 && await blocked(); i++) {
-      const what = await page.evaluate(() => [...document.querySelectorAll('[role=dialog], dialog[open], [class*=dialog]')].map(e => (e.innerText || '').replace(/\s+/g, ' ').slice(0, 60)).filter(Boolean).join(' ‖ '))
-      info(`挡着的弹窗：${what || '（认不出）'}`)
-      if (shot) await page.screenshot({ path: shot.replace(/(\.\w+)$/, `-blocked${i}$1`) })
-      // 只关弹窗，不点「Sign in」「Add API Key」这类会真去做事的按钮：先按 Esc；关不掉的（Preview Notice）点 Continue；再不行点右上角的 ✕
-      await page.keyboard.press('Escape')
-      await page.waitForTimeout(500)
-      if (!(await blocked())) break
-      const dlg = page.locator('[role=dialog], dialog[open]').last()
-      const cont = dlg.getByRole('button', { name: /^(continue|ok|got it|知道了|继续|好的?)$/i })
-      if (await cont.count()) await cont.first().click({ timeout: 15000 }).catch(() => {})
-      else await dlg.locator('button').first().click({ timeout: 5000 }).catch(() => {})
-      await page.waitForTimeout(800)
+    // 弹窗是页面起来以后过一会儿才出的，还可能接着出第二个：连着 3 秒没东西挡着才算清了
+    const clearDialogs = async () => {
+      for (let i = 0, calm = 0; i < 20 && calm < 2; i++) {
+        await page.waitForTimeout(1500)
+        if (!(await blocked())) { calm++; continue }
+        calm = 0
+        const what = await page.evaluate(() => [...document.querySelectorAll('[role=dialog], dialog[open], [class*=dialog]')].map(e => (e.innerText || '').replace(/\s+/g, ' ').slice(0, 60)).filter(Boolean).join(' ‖ '))
+        info(`挡着的弹窗：${what || '（认不出）'}`)
+        // 只关弹窗，不点「Sign in」「Add API Key」这类会真去做事的按钮：先按 Esc；关不掉的（Preview Notice）点 Continue；再不行点右上角的 ✕
+        await page.keyboard.press('Escape')
+        await page.waitForTimeout(500)
+        if (!(await blocked())) continue
+        const dlg = page.locator('[role=dialog], dialog[open]').last()
+        const cont = dlg.getByRole('button', { name: /^(continue|ok|got it|知道了|继续|好的?)$/i })
+        if (await cont.count()) await cont.first().click({ timeout: 15000 }).catch(() => {})
+        else await dlg.locator('button').first().click({ timeout: 5000 }).catch(() => {})
+      }
+      return !(await blocked())
     }
-    if (!ok(!(await blocked()), '网页：dsh 第一次打开的弹窗点掉了，挂件点得到')) { if (shot) await page.screenshot({ path: shot }); return }
-    await pet.click({ position: { x: box.width / 2, y: box.height / 2 } })
+    let clicked = false
+    for (let i = 0; i < 3 && !clicked; i++) {
+      if (!(await clearDialogs())) break
+      clicked = await pet.click({ position: { x: box.width / 2, y: box.height / 2 }, timeout: 5000 }).then(() => true, () => false)
+    }
+    if (!ok(clicked, '网页：dsh 第一次打开的弹窗关掉了，挂件点得到')) { if (shot) await page.screenshot({ path: shot }); return }
     const bubble = page.locator('.fy-bubble:not(.fy-think)')
     const said = await bubble.first().waitFor({ state: 'visible', timeout: 30000 }).then(() => true, () => false)
     const text = said ? (await bubble.first().innerText()).replace(/\s+/g, ' ').slice(0, 80) : ''
