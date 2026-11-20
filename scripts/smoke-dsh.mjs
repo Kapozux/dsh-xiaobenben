@@ -182,8 +182,9 @@ async function inBrowser(url) {
     if (!chromium) throw new Error('playwright 里没有 chromium')
   } catch (err) { ok(false, '浏览器检查要先装 playwright（npm i --no-save playwright && npx playwright install chromium）', err.message); return }
   const b = await chromium.launch()
+  let page = null
   try {
-    const page = await b.newPage({ viewport: { width: 1280, height: 800 } })
+    page = await b.newPage({ viewport: { width: 1280, height: 800 } })
     const errors = []
     page.on('pageerror', e => errors.push(e.message))
     page.on('console', m => { if (m.type() === 'error' && /xiaobenben/i.test(m.text())) errors.push(m.text()) })
@@ -197,12 +198,22 @@ async function inBrowser(url) {
     ok(box && box.x > 640 && box.y > 300, `网页：她在右下角（${Math.round(box?.x)}, ${Math.round(box?.y)}）`)
     const font = await page.evaluate(() => document.fonts.ready.then(() => [...document.fonts].filter(f => /xbb|rounded/i.test(f.family)).map(f => `${f.family}:${f.status}`)))
     info(`字体：${font.join('、') || '（没登记）'}`)
-    // 全新的 dsh 第一次打开有个「Preview Notice」弹窗，开着时整页点不动（inert）：先点掉。按钮要等几秒才亮
-    const blocked = () => page.evaluate(() => !!document.querySelector('.fy-pet')?.closest('[inert]'))
-    for (let i = 0; i < 5 && await blocked(); i++) {
-      const go = page.locator('[role=dialog] button:enabled, dialog button:enabled, [class*=dialog] button:enabled').last()
-      await go.click({ timeout: 30000 }).catch(() => {})
+    // 全新的 dsh 第一次打开有弹窗（Preview Notice 之类），开着时挂件点不到：一个一个点掉。按钮要等几秒才亮
+    const cx = box.x + box.width / 2, cy = box.y + box.height / 2
+    const blocked = () => page.evaluate(([x, y]) => { const p = document.querySelector('.fy-pet'); return !p || !!p.closest('[inert]') || !p.contains(document.elementFromPoint(x, y)) }, [cx, cy])
+    for (let i = 0; i < 6 && await blocked(); i++) {
+      const what = await page.evaluate(() => [...document.querySelectorAll('[role=dialog], dialog[open], [class*=dialog]')].map(e => (e.innerText || '').replace(/\s+/g, ' ').slice(0, 60)).filter(Boolean).join(' ‖ '))
+      info(`挡着的弹窗：${what || '（认不出）'}`)
+      if (shot) await page.screenshot({ path: shot.replace(/(\.\w+)$/, `-blocked${i}$1`) })
+      // 只关弹窗，不点「Sign in」「Add API Key」这类会真去做事的按钮：先按 Esc；关不掉的（Preview Notice）点 Continue；再不行点右上角的 ✕
+      await page.keyboard.press('Escape')
       await page.waitForTimeout(500)
+      if (!(await blocked())) break
+      const dlg = page.locator('[role=dialog], dialog[open]').last()
+      const cont = dlg.getByRole('button', { name: /^(continue|ok|got it|知道了|继续|好的?)$/i })
+      if (await cont.count()) await cont.first().click({ timeout: 15000 }).catch(() => {})
+      else await dlg.locator('button').first().click({ timeout: 5000 }).catch(() => {})
+      await page.waitForTimeout(800)
     }
     if (!ok(!(await blocked()), '网页：dsh 第一次打开的弹窗点掉了，挂件点得到')) { if (shot) await page.screenshot({ path: shot }); return }
     await pet.click({ position: { x: box.width / 2, y: box.height / 2 } })
@@ -221,6 +232,9 @@ async function inBrowser(url) {
     ok(hasDesk === (process.platform === 'darwin'), process.platform === 'darwin' ? '网页：菜单里有「放到桌面上」' : '网页：菜单里没有「放到桌面上」（这台电脑用不了）', items.join(' | '))
     if (shot) { await page.screenshot({ path: shot }); info(`截图：${shot}`) }
     ok(errors.length === 0, '网页：没有报错', errors.join('\n    '))
+  } catch (err) {
+    if (shot && page) await page.screenshot({ path: shot.replace(/(\.\w+)$/, '-error$1') }).catch(() => {})
+    throw err
   } finally { await b.close() }
 }
 
