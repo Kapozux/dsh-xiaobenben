@@ -1,0 +1,5 @@
+# Windows 上签出也用 LF：测试会拿 docs/ 里的文字和代码里的逐字比
+* text=auto eol=lf
+*.png binary
+*.woff2 binary
+*.gif binary

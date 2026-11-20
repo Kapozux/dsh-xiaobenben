@@ -5,7 +5,7 @@
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { claudeTurns } from '../core/moments.js'
+import { base, claudeTurns } from '../core/moments.js'
 import { SOURCE_PATHS } from './files.js'
 
 /**
@@ -44,7 +44,7 @@ export async function loadClaudeTurns({ root = SOURCE_PATHS.claude, since = 0 } 
 
 /** 哪个工作目录底下认出过项目，它就是个装项目的大文件夹：在它里面、没认出是哪个项目的那些轮，文件夹名说不出是哪件事（t.loose） */
 export function markLoose(turns) {
-  const own = t => t.cwd && t.project === t.cwd.split('/').pop()
+  const own = t => t.cwd && t.project === base(t.cwd)
   const containers = new Set(turns.filter(t => t.cwd && t.project && !own(t) && t.project !== '主目录').map(t => t.cwd))
   for (const t of turns) if (containers.has(t.cwd) && own(t)) t.loose = true
   return turns

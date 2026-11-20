@@ -1,5 +1,6 @@
 // 打分结果 → 规律：哪种模板类型、哪类事件、多久以前的事最容易「干巴」「看不懂」。
 // 跑：node proto/lines-review/stats.mjs [轮号]。报告（有原话）写到 out/round-N.report.md。
+import { pathToFileURL } from 'node:url'
 import fs from 'node:fs'
 import { OUT } from './real.mjs'
 import { TPL } from '../../src/core/lines.js'
@@ -52,7 +53,7 @@ export function report(round) {
   return { n, good, rate: n ? good / n : 0, counts: c, file: `${OUT}/round-${round}.report.md`, text: out }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const r = report(Number(process.argv[2] || 1))
   console.log(r.text.split('### 标成')[0])
   console.log('完整报告 →', r.file)

@@ -1,5 +1,6 @@
 // 抽 60 条给主人打分：按「模板类型 × 多久以前」分层，同一类里尽量每条用不同的模板、不同的会话。
 // 私事不抽（默认本来就不说）。同一轮号抽出来的结果固定。产物：out/round-N.sample.json
+import { pathToFileURL } from 'node:url'
 import fs from 'node:fs'
 import crypto from 'node:crypto'
 import { realMoments, OUT, AGES } from './real.mjs'
@@ -40,7 +41,7 @@ export async function sample(round, total = 60) {
   return items
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const round = Number(process.argv[2] || 1)
   const items = await sample(round)
   const count = k => items.reduce((a, m) => (a[m[k]] = (a[m[k]] || 0) + 1, a), {})

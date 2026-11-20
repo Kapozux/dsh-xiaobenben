@@ -4,6 +4,10 @@ import assert from 'node:assert/strict'
 import { buildMoments, claudeTurns, dshTurns, fill, fillFit, say, ago, topic, width, timeWord } from '../src/core/moments.js'
 import { rounds } from '../src/shared/pet-engine.js'
 import { check } from '../scripts/check-lines.mjs'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { loadClaudeTurns, markLoose, resolveProjects } from '../src/sources/claude-turns.js'
 import { TPL } from '../src/core/lines.js'
 
 const T0 = new Date(2026, 10, 3, 14, 0).getTime()
@@ -358,4 +362,72 @@ test('存反馈：别处翻过的事并进来，不被后存的那一份盖掉',
   assert.deepEqual(out.shown, { a: [2, 3000], c: [1, 100], b: [1, 500] })
   assert.deepEqual(out.lines, { 新: -1 })                    // 👍👎 还是以这一份为准（要能撤销）
   assert.deepEqual(mergeShown(mine, null).shown, { a: [1, 3000], c: [1, 100] })
+})
+
+test('Windows 的 Claude Code 记录：C:\\ 路径也认得出项目、子文件夹、主目录', async () => {
+  const at = m => new Date(min(m)).toISOString()
+  const line = o => JSON.stringify(o)
+  const use = (i, name, input) => line({ type: 'assistant', timestamp: at(i), message: { id: 'w' + i, content: [{ type: 'tool_use', name, input }] } })
+  const cwd = 'C:\\Users\\sam\\code'
+  const turns = claudeTurns([
+    line({ type: 'user', timestamp: at(0), cwd, message: { content: '帮我把导入脚本重构一下' } }),
+    use(1, 'Edit', { file_path: 'C:\\Users\\sam\\code\\my-app\\src\\import.js' }),
+    use(2, 'Read', { file_path: 'c:/Users/sam/code/my-app/README.md' }),                  // 盘符大小写、斜杠方向都可能不一样
+    use(3, 'Bash', { command: 'cat /c/Users/sam/code/my-app/package.json && ls' }),       // Git Bash 的写法
+    use(4, 'Edit', { file_path: 'C:\\Users\\sam\\codex\\x.js' }),                           // 不在工作目录底下
+    line({ type: 'user', timestamp: at(5), cwd: 'c:\\Users\\Sam', message: { content: '再看看主目录' } }),
+  ], { key: 'w', home: 'C:\\Users\\sam' })
+  assert.equal(turns[0].project, 'code')
+  assert.deepEqual(turns[0].subs, { 'my-app': 3 })
+  assert.deepEqual([...turns[0].edited], ['import.js', 'x.js'])
+  assert.equal(turns[1].project, '主目录')
+  // 子文件夹里有 package.json 之类才算项目；路径怎么拼由读文件那层决定，这里只看认不认得
+  const seen = []
+  await resolveProjects(turns, async p => { seen.push(p); return /my-app.package\.json$/.test(p) })
+  assert.ok(seen.length > 0)
+  assert.equal(turns[0].project, 'my-app')
+  // 同一个工作目录下、没认出项目的那些轮，标成说不清是哪件事
+  const loose = claudeTurns([line({ type: 'user', timestamp: at(9), cwd, message: { content: '随便看看' } })], { key: 'w2' })
+  markLoose([...turns, ...loose])
+  assert.equal(loose[0].loose, true)
+})
+
+test('macOS / Linux 的路径照旧：分大小写，/Users/sam/codex 不算在 /Users/sam/code 底下', () => {
+  const at = m => new Date(min(m)).toISOString()
+  const turns = claudeTurns([
+    JSON.stringify({ type: 'user', timestamp: at(0), cwd: '/Users/sam/code', message: { content: '改一下' } }),
+    JSON.stringify({ type: 'assistant', timestamp: at(1), message: { id: 'p1', content: [
+      { type: 'tool_use', name: 'Edit', input: { file_path: '/Users/sam/code/my-app/a.js' } },
+      { type: 'tool_use', name: 'Edit', input: { file_path: '/Users/sam/codex/b.js' } },
+      { type: 'tool_use', name: 'Edit', input: { file_path: '/users/sam/code/other/c.js' } },
+      { type: 'tool_use', name: 'Bash', input: { command: 'node /Users/sam/code/my-app/run.js' } },
+    ] } }),
+  ], { key: 'p', home: '/Users/Sam' })
+  assert.equal(turns[0].project, 'code')
+  assert.deepEqual(turns[0].subs, { 'my-app': 2 })
+})
+
+test('真的从硬盘读一条 Claude Code 记录：路径用这台机器自己的写法（Windows 上是 C:\\…），认得出改的是哪个项目', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'xbb-claude-'))
+  try {
+    const cwd = path.join(home, 'code'), app = path.join(cwd, 'my-app')
+    fs.mkdirSync(path.join(app, 'src'), { recursive: true })
+    fs.writeFileSync(path.join(app, 'package.json'), '{}')
+    const dir = path.join(home, 'projects', 'p1')
+    fs.mkdirSync(dir, { recursive: true })
+    const at = m => new Date(Date.now() - 864e5 + m * 60e3).toISOString()
+    fs.writeFileSync(path.join(dir, 's1.jsonl'), [
+      { type: 'user', entrypoint: 'cli', timestamp: at(0), cwd, message: { content: '帮我把导入脚本重构一下' } },
+      { type: 'assistant', timestamp: at(1), message: { id: 'a1', content: [{ type: 'tool_use', name: 'Edit', input: { file_path: path.join(app, 'src', 'import.js') } }] } },
+      { type: 'assistant', timestamp: at(2), message: { id: 'a2', content: [{ type: 'tool_use', name: 'Bash', input: { command: `node ${path.join(app, 'run.js')}` } }] } },
+    ].map(o => JSON.stringify(o)).join('\r\n'))                       // Windows 上有的工具写出来是 CRLF
+    fs.writeFileSync(path.join(dir, 'sdk.jsonl'), JSON.stringify({ type: 'user', entrypoint: 'sdk-cli', timestamp: at(0), cwd, message: { content: '程序调的，不算' } }))
+    const r = await loadClaudeTurns({ root: path.join(home, 'projects') })
+    assert.equal(r.sessions, 1)
+    assert.equal(r.skipped, 1)
+    assert.equal(r.turns.length, 1)
+    assert.deepEqual(r.turns[0].subs, { 'my-app': 2 })
+    assert.equal(r.turns[0].project, 'my-app')
+    assert.deepEqual([...r.turns[0].edited], ['import.js'])
+  } finally { fs.rmSync(home, { recursive: true, force: true }) }
 })

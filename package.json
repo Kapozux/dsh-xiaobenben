@@ -26,7 +26,7 @@
   },
   "scripts": {
     "build": "tsdown --config tsdown.client.config.js",
-    "test": "TZ=Asia/Taipei node --test \"tests/*.test.js\"",
+    "test": "node scripts/test.mjs",
     "prepack": "npm run build",
     "check:local": "node scripts/check-local.mjs"
   },

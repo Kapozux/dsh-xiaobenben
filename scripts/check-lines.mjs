@@ -2,6 +2,7 @@
 //   每条模板：标了情绪（笑 / 被懂 / 骄傲 / 怀念）和态度（心虚 / 撒娇 / 邀功 / 自嘲）；占位符都认得；「」里只有占位符（不许编带引号的话）；
 //   用典型值填出来过台词标准（docs/lines-standard.md：≤40 字、最多两轮、不套娃、没行话）。
 // 加 --real：用本机真实记录生成的全部台词逐条过标准（含原话逐字、数字真实、私事），明细写到 proto/lines-review/out/（有原话，不进仓库）。
+import { pathToFileURL } from 'node:url'
 import { TPL, KIND_OF } from '../src/core/lines.js'
 import { render } from '../src/core/moments.js'
 import { checkLine, tally } from '../src/core/standard.js'
@@ -38,7 +39,7 @@ export function coverage() {
   return { mood: Object.fromEntries(MOODS.map(m => [m, all.filter(l => l.mood === m).length])), tone: Object.fromEntries(TONES.map(t => [t, all.filter(l => l.tone === t).length])), total: all.length }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   if (process.argv.includes('--real')) {
     const { realMoments, OUT } = await import('../proto/lines-review/real.mjs')
     const fs = await import('node:fs')
